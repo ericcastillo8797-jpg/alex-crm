@@ -672,8 +672,8 @@ const DualKpiCard = ({ label, eur, usd, count, icon }) => (
   <div className="kpi">
     <div>
       <div className="kpi-label">{icon && <Icon name={icon} size={12} className="icon"/>}<span>{label}</span></div>
-      <div className="kpi-value">{fmt(eur)}</div>
-      <div style={{fontFamily:'var(--font-mono)',fontSize:15,color:'var(--ink-faint)',marginTop:3,letterSpacing:'-0.01em'}}>${Math.round(usd)}</div>
+      <div className="kpi-value">${Math.round(usd)}</div>
+      <div style={{fontFamily:'var(--font-mono)',fontSize:15,color:'var(--ink-faint)',marginTop:3,letterSpacing:'-0.01em'}}>{fmt(eur)}</div>
     </div>
     <div className="kpi-foot"><span>—</span>{count != null && <span className="kpi-sub">{count} clientes</span>}</div>
   </div>
@@ -1079,10 +1079,10 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
       {loading ? <div className="loading">Cargando…</div> : (
         <>
           <div className="kpi-grid">
-            <KpiCard label="Facturación €" value={fmt(data.ingresoEur)} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
             <KpiCard label="Facturación $" value={fmt(data.ingresoUsd,'$')} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
-            <KpiCard label="Ticket medio €" value={ticketMedioEur>0?fmt(ticketMedioEur):'—'} unit="" icon="up" sub={`${mesContratos.length} contratos ese mes`}/>
+            <KpiCard label="Facturación €" value={fmt(data.ingresoEur)} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
             <KpiCard label="Ticket medio $" value={ticketMedioUsd>0?fmt(ticketMedioUsd,'$'):'—'} unit="" icon="up" sub={`${mesContratos.length} contratos ese mes`}/>
+            <KpiCard label="Ticket medio €" value={ticketMedioEur>0?fmt(ticketMedioEur):'—'} unit="" icon="up" sub={`${mesContratos.length} contratos ese mes`}/>
           </div>
           <div className="kpi-grid">
             <KpiCard label="Clientes activos" value={data.activos} unit="" icon="users" sub="Activos ahora"/>
