@@ -496,6 +496,7 @@ const NAV = [
   { id:'equipo', label:'Equipo', icon:'team', items:[
     {id:'equipo/entrenadores', label:'Entrenadores'},
     {id:'equipo/setters', label:'Setters'},
+    {id:'equipo/editores', label:'Editor de vídeo'},
     {id:'equipo/roles', label:'Roles y permisos'},
   ]},
   { id:'ajustes', label:'Ajustes', icon:'settings', items:[
@@ -2382,7 +2383,7 @@ const NuevoCliente = ({ setRoute }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre:'', pais:'', email:'', prefijo_telefono:'+34', telefono:'', objetivo:'', notas:'', direccion:'' });
-  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, metodo_pago:'Stripe', divisa_principal:'EUR', fecha_inicio:'', fecha_fin:'' });
+  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, metodo_pago:'Stripe', divisa_principal:'EUR', horas_semana:'', fecha_inicio:'', fecha_fin:'' });
 
   useEffect(()=>{
     Promise.all([
@@ -2422,6 +2423,7 @@ const NuevoCliente = ({ setRoute }) => {
         precio_eur:Number(ctrt.precio_eur)||0, precio_usd:Number(ctrt.precio_usd)||0,
         comision_banco_eur:Number(ctrt.comision_banco_eur)||0, comision_banco_usd:Number(ctrt.comision_banco_usd)||0,
         metodo_pago:ctrt.metodo_pago, divisa_principal:ctrt.divisa_principal,
+        horas_semana:Number(ctrt.horas_semana)||null,
         fecha_inicio:ctrt.fecha_inicio, fecha_fin:ctrt.fecha_fin, estado:'activo',
       });
     }
@@ -2478,6 +2480,7 @@ const NuevoCliente = ({ setRoute }) => {
           <FF label="Precio USD" val={ctrt.precio_usd} onCh={v=>sc('precio_usd',v)} type="number" placeholder="0"/>
           <FF label="Comisión banco EUR" val={ctrt.comision_banco_eur} onCh={v=>sc('comision_banco_eur',v)} type="number" placeholder="0"/>
           <FF label="Comisión banco USD" val={ctrt.comision_banco_usd} onCh={v=>sc('comision_banco_usd',v)} type="number" placeholder="0"/>
+          <FF label="Horas/semana (presencial)" val={ctrt.horas_semana} onCh={v=>sc('horas_semana',v)} type="number" placeholder="0"/>
         </div></div>
       </div>
 
@@ -2968,6 +2971,7 @@ const EquipoTabla = ({ tipo }) => {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newNombre, setNewNombre] = useState('');
+  const [newCoste, setNewCoste] = useState('');
   const [saving, setSaving] = useState(false);
   const table = tipo==='entrenadores' ? 'entrenadores' : 'setters';
   const labelPlural = tipo==='entrenadores' ? 'Entrenadores' : 'Setters';
@@ -3005,10 +3009,10 @@ const EquipoTabla = ({ tipo }) => {
     if (!newNombre.trim()) return;
     setSaving(true);
     const row = tipo==='entrenadores'
-      ? { nombre: newNombre.trim(), activo: true }
+      ? { nombre: newNombre.trim(), activo: true, coste_hora_usd: Number(newCoste)||null }
       : { nombre: newNombre.trim(), activo: true, comision_chat: 10, comision_llamada: 5 };
     await window._sb.from(table).insert(row);
-    setNewNombre('');
+    setNewNombre(''); setNewCoste('');
     setShowAdd(false);
     setSaving(false);
     load();
@@ -3029,6 +3033,7 @@ const EquipoTabla = ({ tipo }) => {
       {showAdd && (
         <div style={{padding:'18px 20px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:12,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
           <input autoFocus value={newNombre} onChange={e=>setNewNombre(e.target.value)} onKeyDown={e=>e.key==='Enter'&&añadir()} placeholder={`Nombre del ${labelSing}…`} style={{flex:1,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>
+          {tipo==='entrenadores' && <input type="number" value={newCoste} onChange={e=>setNewCoste(e.target.value)} placeholder="Coste/hora $" style={{width:140,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>}
           <button onClick={añadir} disabled={saving} style={{padding:'9px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:500}}>{saving?'Guardando…':'Guardar'}</button>
           <button onClick={()=>{setShowAdd(false);setNewNombre('');}} className="ghost-btn">Cancelar</button>
         </div>
@@ -3047,13 +3052,14 @@ const EquipoTabla = ({ tipo }) => {
                   <th style={{width:'35%'}}>Nombre</th>
                   <th>Estado</th>
                   {tipo==='setters' && <><th style={{textAlign:'right'}}>% Chat</th><th style={{textAlign:'right'}}>% Llamada</th></>}
+                  {tipo==='entrenadores' && <th style={{textAlign:'right'}}>Coste/hora</th>}
                   <th style={{textAlign:'right'}}>Clientes activos</th>
                   <th style={{width:120}}></th>
                 </tr>
               </thead>
               <tbody>
                 {items.length===0 ? (
-                  <tr><td colSpan={tipo==='setters'?6:4} style={{padding:'48px',textAlign:'center'}}>
+                  <tr><td colSpan={tipo==='setters'?6:5} style={{padding:'48px',textAlign:'center'}}>
                     <div className="empty-icon" style={{margin:'0 auto 14px'}}><Icon name="team" size={22}/></div>
                     <div style={{fontFamily:'var(--font-serif)',fontSize:22,color:'var(--ink)',marginBottom:4}}>Sin {labelPlural.toLowerCase()}</div>
                   </td></tr>
@@ -3065,6 +3071,7 @@ const EquipoTabla = ({ tipo }) => {
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_chat||0}%</td>
                       <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_llamada||0}%</td>
                     </>}
+                    {tipo==='entrenadores' && <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.coste_hora_usd?'$'+item.coste_hora_usd:'—'}</td>}
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{counts[item.id]||0}</td>
                     <td style={{textAlign:'right',display:'flex',gap:6,justifyContent:'flex-end'}}>
                       <button className="ghost-btn" style={{fontSize:12,padding:'5px 10px'}} onClick={()=>toggle(item)}>
@@ -3333,6 +3340,55 @@ const GenericEmpty = ({ route }) => {
 };
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
+const EditoresVideo = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(null);
+  const load = () => { setLoading(true); window._sb.from('editores_video').select('*').order('nombre').then(({ data }) => { setItems(data || []); setLoading(false); }); };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!form.nombre?.trim()) return;
+    const row = { nombre: form.nombre.trim(), pago_por_video: Number(form.pago_por_video) || 0, pago_mensual: Number(form.pago_mensual) || 0, divisa: form.divisa || 'USD', notas: form.notas || null, activo: true };
+    if (form.id) await window._sb.from('editores_video').update(row).eq('id', form.id);
+    else await window._sb.from('editores_video').insert(row);
+    setForm(null); load();
+  };
+  const del = async (it) => { if (!confirm(`¿Eliminar a ${it.nombre}?`)) return; await window._sb.from('editores_video').delete().eq('id', it.id); load(); };
+  const IS = { padding: '9px 12px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' };
+  const Lb = ({ t }) => <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{t}</span>;
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><div className="page-eyebrow">Equipo · Editores</div><h1 className="page-title">Editores de <span className="italic">vídeo</span></h1></div>
+        <button onClick={() => setForm({ nombre: '', pago_por_video: 0, pago_mensual: 0, divisa: 'USD' })} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={13} /> Añadir editor</button>
+      </div>
+      {form && (
+        <div style={{ padding: 18, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, marginBottom: 20, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Nombre" /><input autoFocus value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Pago / vídeo" /><input type="number" value={form.pago_por_video} onChange={e => setForm({ ...form, pago_por_video: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Pago / mes" /><input type="number" value={form.pago_mensual} onChange={e => setForm({ ...form, pago_mensual: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Divisa" /><select value={form.divisa} onChange={e => setForm({ ...form, divisa: e.target.value })} style={{ ...IS, appearance: 'none' }}><option>USD</option><option>EUR</option></select></div>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10 }}><button onClick={save} style={{ padding: '9px 16px', background: 'var(--ink)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>Guardar</button><button onClick={() => setForm(null)} className="ghost-btn">Cancelar</button></div>
+        </div>
+      )}
+      <div className="panel">
+        <div className="panel-head"><h2 className="panel-title">Editores</h2><span className="panel-sub">{items.filter(i => i.activo).length} activos · el pago/mes se resta de tus gastos</span></div>
+        <div className="table-wrap">{loading ? <div className="loading">Cargando…</div> : (
+          <table className="data-table"><thead><tr><th>Nombre</th><th style={{ textAlign: 'right' }}>Pago / vídeo</th><th style={{ textAlign: 'right' }}>Pago / mes</th><th>Divisa</th><th style={{ width: 140 }}></th></tr></thead>
+            <tbody>{items.length === 0 ? <tr><td colSpan={5} style={{ padding: 40, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin editores todavía. Pulsa "Añadir editor".</td></tr> : items.map(it => (
+              <tr key={it.id}>
+                <td className="name">{it.nombre}</td>
+                <td className="num">{it.pago_por_video || 0}{it.divisa === 'EUR' ? '€' : '$'}</td>
+                <td className="num">{it.pago_mensual || 0}{it.divisa === 'EUR' ? '€' : '$'}</td>
+                <td>{it.divisa}</td>
+                <td><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="ghost-btn" onClick={() => setForm(it)}>Editar</button><button className="ghost-btn" onClick={() => del(it)} style={{ color: 'var(--neg)' }}>Borrar</button></div></td>
+              </tr>))}</tbody></table>
+        )}</div>
+      </div>
+    </div>
+  );
+};
+
 const FormularioClientes = ({ setRoute }) => {
   const [tab, setTab] = useState('alta');
   const [clientes, setClientes] = useState([]);
@@ -3391,11 +3447,14 @@ const FormularioClientes = ({ setRoute }) => {
 const MetricsPanel = () => {
   const [contratos, setContratos] = useState([]);
   const [gastos, setGastos] = useState([]);
+  const [editores, setEditores] = useState([]);
   useEffect(() => { (async () => {
-    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,estado,canal');
+    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,estado,canal,horas_semana');
     setContratos(cs || []);
     const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia');
     setGastos(gs || []);
+    const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
+    setEditores(eds || []);
   })(); }, []);
 
   const now = new Date();
@@ -3413,9 +3472,16 @@ const MetricsPanel = () => {
   const semC = contratos.filter(c => { const d = di(c); return d && d >= weekAgo && d <= now; });
   const activos = contratos.filter(c => c.estado === 'activo').length;
   const mesE = sumE(mesC), mesU = sumU(mesC);
-  const gMesE = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_eur || 0), 0);
-  const gMesU = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_usd || 0), 0);
+  const edE = editores.filter(e => e.divisa === 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
+  const edU = editores.filter(e => e.divisa !== 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
+  const gMesE = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_eur || 0), 0) + edE;
+  const gMesU = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_usd || 0), 0) + edU;
   const benE = mesE - gMesE, benU = mesU - gMesU;
+  // Valor por hora presencial: facturación presencial activa / horas presenciales al mes
+  const presAct = contratos.filter(c => c.estado === 'activo' && c.canal === 'PRESENCIAL');
+  const horasMes = presAct.reduce((s, c) => s + (Number(c.horas_semana) || 0), 0) * 4.33;
+  const presIngreso = presAct.reduce((s, c) => s + (c.precio_eur || 0) + (c.precio_usd || 0), 0);
+  const valorHora = horasMes > 0 ? presIngreso / horasMes : 0;
 
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const last6 = [];
@@ -3449,6 +3515,11 @@ const MetricsPanel = () => {
         <div className="mp-label">Beneficio del mes</div>
         <div className={'mp-value' + ((benE < 0 || benU < 0) ? ' neg' : '')}>{r0(benE)}<span className="u">€</span> · {r0(benU)}<span className="u">$</span></div>
         <div className="mp-sub">{activos} clientes activos</div>
+      </div>
+      <div className="mp-card">
+        <div className="mp-label">Valor de tu hora (presencial)</div>
+        <div className="mp-value">{horasMes > 0 ? r0(valorHora) : '—'}<span className="u">/h</span></div>
+        <div className="mp-sub">{horasMes > 0 ? `${r0(horasMes)} h/mes presencial` : 'mete las horas en cada cliente'}</div>
       </div>
       <div className="mp-card mp-wide">
         <div className="mp-label">Facturación · últimos 6 meses</div>
@@ -3535,6 +3606,7 @@ const App = () => {
       case 'delivery/entregas': return <DeliveryEntregas/>;
       case 'equipo/entrenadores': return <EquipoTabla tipo="entrenadores"/>;
       case 'equipo/setters': return <EquipoTabla tipo="setters"/>;
+      case 'equipo/editores': return <EditoresVideo/>;
       case 'equipo/roles': return <RolesPermisos/>;
 
       case 'economia/facturacion': return <EconomiaFacturacion/>;
