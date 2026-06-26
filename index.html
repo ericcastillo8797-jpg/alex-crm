@@ -2502,6 +2502,17 @@ const NuevoCliente = ({ setRoute }) => {
       {error && <div style={{padding:'12px 16px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:10,marginBottom:20,fontSize:13,color:'var(--neg)'}}>{error}</div>}
 
       <div className="panel">
+        <div className="panel-head"><h2 className="panel-title">Tipo de <span className="italic">cliente</span></h2></div>
+        <div className="panel-body">
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            {[['ONLINE','Online'],['PRESENCIAL','Presencial'],['SKOOL','Skool']].map(([v,lbl])=>(
+              <button key={v} type="button" onClick={()=>sc('canal',v)} style={{padding:'14px 26px',fontSize:14,fontWeight:600,borderRadius:10,border:'1px solid '+(ctrt.canal===v?'var(--ink)':'var(--line)'),background:ctrt.canal===v?'var(--ink)':'var(--bg-1)',color:ctrt.canal===v?'#fff':'var(--ink-dim)',cursor:'pointer'}}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="panel">
         <div className="panel-head"><h2 className="panel-title">Datos <span className="italic">de contacto</span></h2></div>
         <div className="panel-body"><div style={g4}>
           <div style={sp2}><FF label="Nombre completo" val={form.nombre} onCh={v=>sf('nombre',v)} placeholder="Ej. Laura García"/></div>
