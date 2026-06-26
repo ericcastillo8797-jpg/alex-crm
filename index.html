@@ -756,6 +756,22 @@ const CanalMonthlyChart = ({ contratos, year, color }) => {
 };
 
 // ─── MONTHLY REVENUE CHART ────────────────────────────────────────────────────
+// Facturación de un contrato en un mes concreto.
+// Plan mensual (duración 1 mes) => cobra CADA mes activo (fecha_inicio..fecha_fin).
+// Plan de varios meses (anual/semestral/trimestral) => pago único en el mes de inicio.
+const revenueInMonth = (c, y, m, field) => {
+  const v = c[field] || 0; if (!v) return 0;
+  const d0 = c.fecha_inicio ? new Date(c.fecha_inicio) : null; if (!d0 || isNaN(d0)) return 0;
+  const startM = d0.getFullYear() * 12 + d0.getMonth();
+  const tgt = y * 12 + m;
+  if (c.planes && c.planes.duracion_meses === 1) {
+    const d1 = c.fecha_fin ? new Date(c.fecha_fin) : null;
+    const endM = (d1 && !isNaN(d1)) ? d1.getFullYear() * 12 + d1.getMonth() : startM;
+    return (tgt >= startM && tgt <= endM) ? v : 0;
+  }
+  return (tgt === startM) ? v : 0;
+};
+
 const MonthlyRevenueChart = ({ year }) => {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -764,19 +780,15 @@ const MonthlyRevenueChart = ({ year }) => {
   useEffect(() => {
     const load = async () => {
       const { data } = await window._sb.from('contratos')
-        .select('precio_eur,precio_usd,canal,fecha_inicio')
-        .gte('fecha_inicio', `${year}-01-01`)
-        .lte('fecha_inicio', `${year}-12-31`);
+        .select('precio_eur,precio_usd,canal,fecha_inicio,fecha_fin,planes(duracion_meses)');
       const rows = data || [];
-      const byMonth = Array.from({length:12}, (_,i) => {
-        const mes = rows.filter(c => new Date(c.fecha_inicio).getMonth() === i);
-        return {
-          online:     mes.filter(c=>c.canal==='ONLINE').reduce((s,c)=>s+(c.precio_eur||0)+(c.precio_usd||0)*0.92,0),
-          presencial: mes.filter(c=>c.canal==='PRESENCIAL').reduce((s,c)=>s+(c.precio_eur||0)+(c.precio_usd||0)*0.92,0),
-          skool:      mes.filter(c=>c.canal==='SKOOL').reduce((s,c)=>s+(c.precio_eur||0)+(c.precio_usd||0)*0.92,0),
-          count:      mes.length
-        };
-      });
+      const rev = (c,i) => revenueInMonth(c,year,i,'precio_eur') + revenueInMonth(c,year,i,'precio_usd')*0.92;
+      const byMonth = Array.from({length:12}, (_,i) => ({
+        online:     rows.filter(c=>c.canal==='ONLINE').reduce((s,c)=>s+rev(c,i),0),
+        presencial: rows.filter(c=>c.canal==='PRESENCIAL').reduce((s,c)=>s+rev(c,i),0),
+        skool:      rows.filter(c=>c.canal==='SKOOL').reduce((s,c)=>s+rev(c,i),0),
+        count:      rows.filter(c=>revenueInMonth(c,year,i,'precio_eur')||revenueInMonth(c,year,i,'precio_usd')).length
+      }));
       setMonthData(byMonth);
     };
     load();
@@ -852,8 +864,7 @@ const DashboardGeneral = () => {
       // Cargar contratos activos con info de cliente y plan
       const { data } = await window._sb
         .from('contratos')
-        .select(`*, clientes(nombre, pais), planes(nombre, canal)`)
-        .eq('estado', 'activo');
+        .select(`*, clientes(nombre, pais), planes(nombre, canal, duracion_meses)`);
       setClientes(data || []);
       setLoading(false);
     };
@@ -861,25 +872,24 @@ const DashboardGeneral = () => {
   }, []);
 
   // Filtrar por mes/año según fecha_inicio del contrato
+  // Clientes que facturan en el mes seleccionado (los mensuales recurren cada mes activo)
   const filtered = useMemo(() => {
-    return clientes.filter(c => {
-      const d = new Date(c.fecha_inicio);
-      return d.getFullYear() === year && d.getMonth() === month;
-    });
+    return clientes.filter(c => revenueInMonth(c, year, month, 'precio_eur') || revenueInMonth(c, year, month, 'precio_usd'));
   }, [clientes, year, month]);
 
-  const onlineEur = filtered.filter(c=>c.canal==='ONLINE').reduce((s,c)=>s+(c.precio_eur||0),0);
-  const onlineUsd = filtered.filter(c=>c.canal==='ONLINE').reduce((s,c)=>s+(c.precio_usd||0),0);
-  const presencialUsd = filtered.filter(c=>c.canal==='PRESENCIAL').reduce((s,c)=>s+(c.precio_usd||0),0);
-  const presencialEur = filtered.filter(c=>c.canal==='PRESENCIAL').reduce((s,c)=>s+(c.precio_eur||0),0);
-  const skoolUsd = filtered.filter(c=>c.canal==='SKOOL').reduce((s,c)=>s+(c.precio_usd||0),0);
-  const skoolEur = filtered.filter(c=>c.canal==='SKOOL').reduce((s,c)=>s+(c.precio_eur||0),0);
+  const sumCanal = (canal, field) => clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c, year, month, field),0);
+  const onlineEur = sumCanal('ONLINE','precio_eur');
+  const onlineUsd = sumCanal('ONLINE','precio_usd');
+  const presencialUsd = sumCanal('PRESENCIAL','precio_usd');
+  const presencialEur = sumCanal('PRESENCIAL','precio_eur');
+  const skoolUsd = sumCanal('SKOOL','precio_usd');
+  const skoolEur = sumCanal('SKOOL','precio_eur');
   const totalEur = onlineEur + presencialEur + skoolEur;
   const totalUsd = onlineUsd + presencialUsd + skoolUsd;
 
-  const activeOnline = clientes.filter(c=>c.canal==='ONLINE').length;
-  const activePresencial = clientes.filter(c=>c.canal==='PRESENCIAL').length;
-  const activeSkool = clientes.filter(c=>c.canal==='SKOOL').length;
+  const activeOnline = clientes.filter(c=>c.canal==='ONLINE' && c.estado==='activo').length;
+  const activePresencial = clientes.filter(c=>c.canal==='PRESENCIAL' && c.estado==='activo').length;
+  const activeSkool = clientes.filter(c=>c.canal==='SKOOL' && c.estado==='activo').length;
 
   return (
     <div className="page">
@@ -1027,7 +1037,7 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
       setLoading(true);
       // Fetch ALL contracts for this canal — filter client-side by month
       const { data } = await window._sb.from('contratos')
-        .select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado')
+        .select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,planes(duracion_meses)')
         .eq('canal', canal);
       setAllContratos(data || []);
       setLoading(false);
@@ -1038,15 +1048,11 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
   // Revenue = contracts whose fecha_inicio falls in the selected year+month
   // (fecha_inicio = when the client paid/started)
   const mesContratos = useMemo(() => {
-    return allContratos.filter(c => {
-      if (!c.fecha_inicio) return false;
-      const d = new Date(c.fecha_inicio);
-      return d.getFullYear() === year && d.getMonth() === month;
-    });
+    return allContratos.filter(c => revenueInMonth(c, year, month, 'precio_eur') || revenueInMonth(c, year, month, 'precio_usd'));
   }, [allContratos, year, month]);
 
-  const ingresoEur = mesContratos.reduce((s,c)=>s+(c.precio_eur||0),0);
-  const ingresoUsd = mesContratos.reduce((s,c)=>s+(c.precio_usd||0),0);
+  const ingresoEur = allContratos.reduce((s,c)=>s+revenueInMonth(c, year, month, 'precio_eur'),0);
+  const ingresoUsd = allContratos.reduce((s,c)=>s+revenueInMonth(c, year, month, 'precio_usd'),0);
 
   // Activos = currently active (estado=activo)
   const activos = allContratos.filter(c=>c.estado==='activo').length;
@@ -3637,7 +3643,7 @@ const MetricsPanel = ({ open, onToggle }) => {
   const [gastos, setGastos] = useState([]);
   const [editores, setEditores] = useState([]);
   useEffect(() => { (async () => {
-    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,estado,canal,horas_semana');
+    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(duracion_meses)');
     setContratos(cs || []);
     const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia');
     setGastos(gs || []);
@@ -3661,11 +3667,12 @@ const MetricsPanel = ({ open, onToggle }) => {
   const sumU = arr => arr.reduce((s, c) => s + (c.precio_usd || 0), 0);
   const r0 = n => Math.round(n);
 
-  const mesC = contratos.filter(c => { const d = di(c); return d && d.getFullYear() === y && d.getMonth() === mo; });
+  const mesC = contratos.filter(c => revenueInMonth(c, y, mo, 'precio_eur') || revenueInMonth(c, y, mo, 'precio_usd'));
   const hoyC = contratos.filter(c => c.fecha_inicio === todayStr);
   const semC = contratos.filter(c => { const d = di(c); return d && d >= weekAgo && d <= now; });
   const activos = contratos.filter(c => c.estado === 'activo').length;
-  const mesE = sumE(mesC), mesU = sumU(mesC);
+  const mesE = contratos.reduce((s,c)=>s+revenueInMonth(c,y,mo,'precio_eur'),0);
+  const mesU = contratos.reduce((s,c)=>s+revenueInMonth(c,y,mo,'precio_usd'),0);
   const edE = editores.filter(e => e.divisa === 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
   const edU = editores.filter(e => e.divisa !== 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
   const gMesE = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_eur || 0), 0) + edE;
@@ -3680,7 +3687,7 @@ const MetricsPanel = ({ open, onToggle }) => {
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const last6 = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(y, mo - i, 1); last6.push({ y: d.getFullYear(), m: d.getMonth() }); }
-  const barVals = last6.map(({ y: yy, m: mm }) => contratos.filter(c => { const d = di(c); return d && d.getFullYear() === yy && d.getMonth() === mm; }).reduce((s, c) => s + (c.precio_eur || 0) + (c.precio_usd || 0), 0));
+  const barVals = last6.map(({ y: yy, m: mm }) => contratos.reduce((s, c) => s + revenueInMonth(c, yy, mm, 'precio_eur') + revenueInMonth(c, yy, mm, 'precio_usd'), 0));
   const maxBar = Math.max(...barVals, 1);
 
   return (
