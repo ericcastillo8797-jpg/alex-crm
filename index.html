@@ -318,6 +318,10 @@ a { color: inherit; text-decoration: none; }
 
 /* PANEL DERECHO DE MÉTRICAS */
 .app.has-panel { grid-template-columns: 264px minmax(0,1180px) minmax(320px,1fr); }
+.app.has-panel-min { grid-template-columns: 264px minmax(0,1180px) 40px; }
+.metrics-panel.collapsed { display: block; padding: 12px 4px; }
+.mp-toggle { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 4px; }
+.mp-toggle:hover { color: var(--ink); }
 .metrics-panel { border-left: 1px solid var(--line); background: var(--bg-1); overflow-y: auto; padding: 18px 18px 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap: 12px; align-content: start; }
 .mp-head, .mp-card.hero, .mp-row, .mp-wide { grid-column: 1 / -1; }
 .nav-item.locked { opacity: 0.4; cursor: not-allowed; display: flex; align-items: center; justify-content: space-between; }
@@ -340,7 +344,7 @@ a { color: inherit; text-decoration: none; }
 .mp-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .mp-bar { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
 .mp-bar-lbl { font-size: 8px; color: var(--ink-faint); text-transform: uppercase; }
-@media (max-width: 1280px) { .app.has-panel { grid-template-columns: 264px 1fr; } .metrics-panel { display: none; } }
+@media (max-width: 1280px) { .app.has-panel, .app.has-panel-min { grid-template-columns: 264px 1fr; } .metrics-panel { display: none; } }
 
 /* MOBILE */
 @media (max-width: 960px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } .split-2 { grid-template-columns: 1fr; } }
@@ -634,11 +638,6 @@ const Topbar = ({ route, onMenu }) => {
         <span>{groupLabel}</span>
         {subLabel && <><span className="sep">/</span><span className="current">{subLabel}</span></>}
       </div>
-      <div className="topbar-search">
-        <Icon name="search" size={14}/>
-        <input placeholder="Buscar cliente…"/>
-      </div>
-      <button className="icon-btn"><Icon name="bell" size={15}/></button>
     </header>
   );
 };
@@ -901,7 +900,6 @@ const DashboardGeneral = () => {
           </select>
         </div>
         <div className="filter-spacer"/>
-        <button className="ghost-btn"><Icon name="download" size={14}/> Exportar</button>
       </div>
 
       <div className="kpi-grid">
@@ -2409,7 +2407,7 @@ const NuevoCliente = ({ setRoute }) => {
     if (!form.nombre.trim()) { setError('El nombre es obligatorio.'); return; }
     setSaving(true); setError('');
     const { data: cd, error: ce } = await window._sb.from('clientes').insert({
-      nombre:form.nombre.trim(), pais:form.pais||null, email:form.email||null,
+      nombre:form.nombre.trim(), pais:form.pais||null, nacionalidad:form.pais||null, email:form.email||null,
       prefijo_telefono:form.prefijo_telefono||null, telefono:form.telefono||null,
       objetivo:form.objetivo||null, notas:form.notas||null,
       direccion:form.direccion||null, activo:true,
@@ -2456,7 +2454,7 @@ const NuevoCliente = ({ setRoute }) => {
         <div className="panel-body"><div style={g4}>
           <div style={sp2}><FF label="Nombre completo" val={form.nombre} onCh={v=>sf('nombre',v)} placeholder="Ej. Laura García"/></div>
           <div style={sp2}><FF label="Email" val={form.email} onCh={v=>sf('email',v)} type="email" placeholder="laura@email.com"/></div>
-          <FF label="País" val={form.pais} onCh={v=>sf('pais',v)} placeholder="España"/>
+          <FF label="Nacionalidad" val={form.pais} onCh={v=>sf('pais',v)} placeholder="España"/>
           <FF label="Prefijo" val={form.prefijo_telefono} onCh={v=>sf('prefijo_telefono',v)} placeholder="+34"/>
           <div style={sp2}><FF label="Teléfono" val={form.telefono} onCh={v=>sf('telefono',v)} placeholder="600 000 000"/></div>
           <div style={sp2}><FF label="Dirección (delivery)" val={form.direccion} onCh={v=>sf('direccion',v)} placeholder="Calle, número, ciudad…"/></div>
@@ -3402,7 +3400,7 @@ const FormularioClientes = ({ setRoute }) => {
   const contratoActual = sel ? (sel.contratos?.find(c => c.estado === 'activo') || sel.contratos?.[0] || null) : null;
 
   const tabs = [
-    { id: 'alta', label: 'Alta nuevo' },
+    { id: 'alta', label: 'Nuevo cliente' },
     { id: 'renovar', label: 'Renovar' },
     { id: 'upgrade', label: 'Upgrade' },
     { id: 'baja', label: 'Dar de baja' },
@@ -3444,7 +3442,7 @@ const FormularioClientes = ({ setRoute }) => {
   );
 };
 
-const MetricsPanel = () => {
+const MetricsPanel = ({ open, onToggle }) => {
   const [contratos, setContratos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [editores, setEditores] = useState([]);
@@ -3456,6 +3454,12 @@ const MetricsPanel = () => {
     const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
     setEditores(eds || []);
   })(); }, []);
+
+  if (!open) return (
+    <aside className="metrics-panel collapsed">
+      <button className="mp-toggle" onClick={onToggle} title="Mostrar resumen en vivo">‹</button>
+    </aside>
+  );
 
   const now = new Date();
   const y = now.getFullYear(), mo = now.getMonth();
@@ -3491,7 +3495,7 @@ const MetricsPanel = () => {
 
   return (
     <aside className="metrics-panel">
-      <div className="mp-head">Resumen en vivo</div>
+      <div className="mp-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Resumen en vivo</span><button className="mp-toggle" onClick={onToggle} title="Minimizar">›</button></div>
       <div className="mp-card hero">
         <div className="mp-label">Facturado este mes</div>
         <div className="mp-value">{r0(mesE)}<span className="u">€</span> · {r0(mesU)}<span className="u">$</span></div>
@@ -3543,6 +3547,8 @@ const App = () => {
   const [route, setRoute] = useState('dashboard/general');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState(null);
+  const [panelOpen, setPanelOpen] = useState(()=>localStorage.getItem('af_panel')!=='0');
+  const togglePanel = () => setPanelOpen(o=>{ const n=!o; localStorage.setItem('af_panel', n?'1':'0'); return n; });
 
   useEffect(()=>{
     const loadPerfil = async (u) => {
@@ -3620,13 +3626,13 @@ const App = () => {
 
   const showPanel = perfil && ['founder','admin'].includes(perfil.rol) && route !== 'economia/facturacion';
   return (
-    <div className={'app'+(showPanel?' has-panel':'')}>
+    <div className={'app'+(showPanel?(panelOpen?' has-panel':' has-panel-min'):'')}>
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
         <Topbar route={route} onMenu={()=>setMobileOpen(true)}/>
         {renderPage()}
       </main>
-      {showPanel && <MetricsPanel/>}
+      {showPanel && <MetricsPanel open={panelOpen} onToggle={togglePanel}/>}
     </div>
   );
 };
