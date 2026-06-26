@@ -511,8 +511,8 @@ const NAV = [
   ]},
 ];
 
-const LOCKED_GROUPS = new Set(['libreria','agenda','delivery']);
-const LOCKED_ITEMS = new Set(['equipo/roles']);
+const LOCKED_GROUPS = new Set(['agenda','delivery']);
+const LOCKED_ITEMS = new Set(['equipo/roles','libreria/ejercicios','libreria/workouts','libreria/planes','libreria/alimentos','libreria/documentos','libreria/formularios']);
 
 const getNavForRole = (rol) => {
   if (!rol || rol === 'founder' || rol === 'admin') return NAV.filter(g => g.id !== 'clientes-ent');
@@ -2541,7 +2541,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
     comision_banco_eur:contratoActual?.comision_banco_eur||0, comision_banco_usd:contratoActual?.comision_banco_usd||0,
     metodo_pago:contratoActual?.metodo_pago||'Stripe', divisa_principal:contratoActual?.divisa_principal||'EUR',
   });
-  useEffect(()=>{ window._sb.from('planes').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
+  useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
   const IS = {padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%'};
   const SS = {...IS,appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center',paddingRight:32};
@@ -2588,7 +2588,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <div style={{gridColumn:'span 2',display:'flex',flexDirection:'column',gap:6}}>
           <Lbl t="Plan"/>
-          <select value={form.plan_id} onChange={e=>sf('plan_id',e.target.value)} style={SS}>
+          <select value={form.plan_id} onChange={e=>{ const p=planes.find(x=>x.id===e.target.value); setForm(f=>({...f, plan_id:e.target.value, ...(p?{precio_eur:p.precio_eur??f.precio_eur, precio_usd:p.precio_usd??f.precio_usd}:{})})); }} style={SS}>
             <option value="">— Mismo plan</option>
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
@@ -2616,7 +2616,7 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ plan_id:'', precio_diferencia_eur:0, precio_diferencia_usd:0, comision_banco_eur:0, comision_banco_usd:0, fecha_inicio_nueva:'', fecha_fin_nueva:'' });
-  useEffect(()=>{ window._sb.from('planes').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
+  useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
   const IS = {padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%'};
   const SS = {...IS,appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center',paddingRight:32};
@@ -3338,6 +3338,62 @@ const GenericEmpty = ({ route }) => {
 };
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
+const Programas = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(null);
+  const load = () => { setLoading(true); window._sb.from('planes').select('*').order('nombre').then(({ data }) => { setItems(data || []); setLoading(false); }); };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    if (!form.nombre?.trim()) return;
+    const row = { nombre: form.nombre.trim(), precio_eur: form.precio_eur === '' ? null : Number(form.precio_eur), precio_usd: form.precio_usd === '' ? null : Number(form.precio_usd), canal: form.canal || 'ONLINE', duracion_meses: form.duracion_meses ? Number(form.duracion_meses) : null, activo: true };
+    if (form.id) await window._sb.from('planes').update(row).eq('id', form.id);
+    else await window._sb.from('planes').insert(row);
+    setForm(null); load();
+  };
+  const del = async (it) => {
+    if (!confirm(`¿Eliminar el programa "${it.nombre}"?`)) return;
+    const { error } = await window._sb.from('planes').delete().eq('id', it.id);
+    if (error) { await window._sb.from('planes').update({ activo: false }).eq('id', it.id); alert('Ese programa tiene clientes asignados, así que no se puede borrar del todo. Lo he DESACTIVADO (ya no aparece para nuevos clientes).'); }
+    load();
+  };
+  const IS = { padding: '9px 12px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' };
+  const Lb = ({ t }) => <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{t}</span>;
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><div className="page-eyebrow">Librería · Programas</div><h1 className="page-title">Programas <span className="italic">y precios</span></h1></div>
+        <button onClick={() => setForm({ nombre: '', precio_eur: '', precio_usd: '', canal: 'ONLINE', duracion_meses: '' })} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={13} /> Nuevo programa</button>
+      </div>
+      {form && (
+        <div style={{ padding: 18, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, marginBottom: 20, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: 12, alignItems: 'end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Nombre" /><input autoFocus value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Canal" /><select value={form.canal} onChange={e => setForm({ ...form, canal: e.target.value })} style={{ ...IS, appearance: 'none' }}>{['ONLINE', 'PRESENCIAL', 'SKOOL', 'TODOS'].map(c => <option key={c}>{c}</option>)}</select></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Precio €" /><input type="number" value={form.precio_eur} onChange={e => setForm({ ...form, precio_eur: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Precio $" /><input type="number" value={form.precio_usd} onChange={e => setForm({ ...form, precio_usd: e.target.value })} style={IS} /></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Duración (meses)" /><input type="number" value={form.duracion_meses} onChange={e => setForm({ ...form, duracion_meses: e.target.value })} style={IS} /></div>
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10 }}><button onClick={save} style={{ padding: '9px 16px', background: 'var(--ink)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>Guardar</button><button onClick={() => setForm(null)} className="ghost-btn">Cancelar</button></div>
+        </div>
+      )}
+      <div className="panel">
+        <div className="panel-head"><h2 className="panel-title">Programas</h2><span className="panel-sub">{items.filter(i => i.activo).length} activos</span></div>
+        <div className="table-wrap">{loading ? <div className="loading">Cargando…</div> : (
+          <table className="data-table"><thead><tr><th>Nombre</th><th>Canal</th><th style={{ textAlign: 'right' }}>Precio €</th><th style={{ textAlign: 'right' }}>Precio $</th><th>Estado</th><th style={{ width: 140 }}></th></tr></thead>
+            <tbody>{items.length === 0 ? <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin programas. Pulsa "Nuevo programa".</td></tr> : items.map(it => (
+              <tr key={it.id} style={it.activo ? {} : { opacity: 0.5 }}>
+                <td className="name">{it.nombre}</td>
+                <td>{it.canal}</td>
+                <td className="num">{it.precio_eur != null ? it.precio_eur + '€' : '—'}</td>
+                <td className="num">{it.precio_usd != null ? '$' + it.precio_usd : '—'}</td>
+                <td><span className={`chip ${it.activo ? 'activo' : 'inactivo'}`}>{it.activo ? 'Activo' : 'Inactivo'}</span></td>
+                <td><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="ghost-btn" onClick={() => setForm({ ...it, precio_eur: it.precio_eur ?? '', precio_usd: it.precio_usd ?? '', duracion_meses: it.duracion_meses ?? '' })}>Editar</button><button className="ghost-btn" onClick={() => del(it)} style={{ color: 'var(--neg)' }}>Borrar</button></div></td>
+              </tr>))}</tbody></table>
+        )}</div>
+      </div>
+    </div>
+  );
+};
+
 const EditoresVideo = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3613,6 +3669,7 @@ const App = () => {
       case 'equipo/entrenadores': return <EquipoTabla tipo="entrenadores"/>;
       case 'equipo/setters': return <EquipoTabla tipo="setters"/>;
       case 'equipo/editores': return <EditoresVideo/>;
+      case 'libreria/programas': return <Programas/>;
       case 'equipo/roles': return <RolesPermisos/>;
 
       case 'economia/facturacion': return <EconomiaFacturacion/>;
