@@ -476,8 +476,11 @@ const NAV = [
     {id:'clientes/formulario', label:'Formulario de clientes'},
     {id:'economia/facturacion', label:'Facturación'},
     {id:'economia/gastos', label:'Gastos'},
-    {id:'economia/comisiones-entrenadores', label:'Comisiones entrenadores'},
-    {id:'economia/comisiones-setters', label:'Comisiones setters'},
+  ]},
+  { id:'comisiones', label:'Comisiones', icon:'money', items:[
+    {id:'economia/comisiones-entrenadores', label:'Entrenadores'},
+    {id:'economia/comisiones-setters', label:'Setters'},
+    {id:'economia/comisiones-closers', label:'Closers'},
   ]},
   { id:'libreria', label:'Librería', icon:'book', items:[
     {id:'libreria/programas', label:'Programas'},
@@ -520,7 +523,7 @@ const LOCKED_ITEMS = new Set(['equipo/roles','libreria/ejercicios','libreria/wor
 
 const getNavForRole = (rol) => {
   if (!rol || rol === 'founder' || rol === 'admin') return NAV.filter(g => g.id !== 'clientes-ent');
-  if (rol === 'entrenador') return NAV.filter(g => g.id !== 'negocio');
+  if (rol === 'entrenador') return NAV.filter(g => g.id !== 'negocio' && g.id !== 'comisiones');
   if (rol === 'cocinera') return NAV.filter(g => g.id === 'delivery');
   return NAV;
 };
@@ -1440,6 +1443,35 @@ const PagosTab = ({ cliente, contratos }) => {
   );
 };
 
+const AlargarFechaModal = ({ cliente, contratoActual, onClose, onSaved }) => {
+  const [fecha, setFecha] = useState(contratoActual?.fecha_fin || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const save = async () => {
+    if (!fecha) { setError('Pon una fecha.'); return; }
+    if (!contratoActual?.id) { setError('Este cliente no tiene contrato activo.'); return; }
+    setSaving(true); setError('');
+    const { error: err } = await window._sb.from('contratos').update({ fecha_fin: fecha }).eq('id', contratoActual.id);
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved?.(); onClose();
+  };
+  return (
+    <ModalShell title="Alargar" italic="fecha de fin" onClose={onClose} maxWidth={460}
+      footer={<>
+        <button className="ghost-btn" onClick={onClose}>Cancelar</button>
+        <button onClick={save} disabled={saving} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: 'pointer' }}>{saving ? 'Guardando…' : 'Guardar nueva fecha'}</button>
+      </>}>
+      <div style={{ padding: '12px 14px', background: 'var(--bg-2)', borderRadius: 10, marginBottom: 16, fontSize: 13 }}>Fecha de fin actual: <b style={{ color: 'var(--ink)' }}>{contratoActual?.fecha_fin || '—'}</b></div>
+      {error && <div style={{ padding: '10px 14px', background: '#fdf0ee', border: '1px solid #f5d0c8', borderRadius: 8, marginBottom: 14, fontSize: 13, color: 'var(--neg)' }}>{error}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <FLbl t="Nueva fecha de fin" />
+        <input type="date" value={fecha} onChange={e => setFecha(e.target.value)} style={FLD_IS} />
+      </div>
+    </ModalShell>
+  );
+};
+
 const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [tab, setTab] = useState('info');
   const [contratos, setContratos] = useState([]);
@@ -1485,6 +1517,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
             <button className="ghost-btn" onClick={()=>setModal('renovar')}>Renovar contrato</button>
             <button className="ghost-btn" onClick={()=>setModal('upgrade')}>Upgrade plan</button>
+            <button className="ghost-btn" onClick={()=>setModal('alargar')}>Alargar fecha</button>
             <button className="ghost-btn" onClick={()=>setModal('baja')} style={{color:'#b04425',borderColor:'#e8c9bd'}}>Dar de baja</button>
           </div>
         </div>
@@ -1635,6 +1668,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
 
       {modal === 'renovar' && <RenovarModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); onClienteUpdated?.(); }}/>}
       {modal === 'upgrade' && <UpgradeModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); }}/>}
+      {modal === 'alargar' && <AlargarFechaModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); }}/>}
       {modal === 'baja' && <BajaModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ onClienteUpdated?.(); }}/>}
     </>
   );
@@ -2021,6 +2055,49 @@ const EconomiaFacturacion = () => {
 };
 
 // ─── ECONOMÍA / COMISIONES ENTRENADORES ──────────────────────────────────────
+const ComisionesClosers = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const load = () => { setLoading(true); window._sb.from('closers').select('*').order('nombre').then(({ data, error }) => { if (error) setNeedsSetup(true); setItems(data || []); setLoading(false); }); };
+  useEffect(() => { load(); }, []);
+  const save = async () => { if (!form.nombre?.trim()) return; const row = { nombre: form.nombre.trim(), comision_pct: Number(form.comision_pct) || 0, activo: true }; if (form.id) await window._sb.from('closers').update(row).eq('id', form.id); else await window._sb.from('closers').insert(row); setForm(null); load(); };
+  const del = async (it) => { if (!confirm(`¿Eliminar a ${it.nombre}?`)) return; await window._sb.from('closers').delete().eq('id', it.id); load(); };
+  const IS = { padding: '9px 12px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' };
+  const Lb = ({ t }) => <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{t}</span>;
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><div className="page-eyebrow">Economía · Comisiones</div><h1 className="page-title">Comisiones <span className="italic">closers</span></h1></div>
+        {!needsSetup && <button onClick={() => setForm({ nombre: '', comision_pct: 0 })} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={13} /> Añadir closer</button>}
+      </div>
+      {needsSetup ? (
+        <div className="panel"><div className="panel-body" style={{ padding: 30 }}>
+          <p style={{ fontSize: 14, color: 'var(--ink-dim)' }}>Esta sección necesita un pequeño paso de base de datos (te dejé el SQL al final del mensaje). En cuanto lo ejecutes en Supabase, aquí das de alta a los closers y su % de comisión.</p>
+        </div></div>
+      ) : (<>
+        {form && (
+          <div style={{ padding: 18, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, marginBottom: 20, display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'end' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="Nombre" /><input autoFocus value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} style={IS} /></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Lb t="% comisión" /><input type="number" value={form.comision_pct} onChange={e => setForm({ ...form, comision_pct: e.target.value })} style={IS} /></div>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10 }}><button onClick={save} style={{ padding: '9px 16px', background: 'var(--ink)', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 500, border: 'none', cursor: 'pointer' }}>Guardar</button><button onClick={() => setForm(null)} className="ghost-btn">Cancelar</button></div>
+          </div>
+        )}
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Closers</h2><span className="panel-sub">{items.filter(i => i.activo).length} activos</span></div>
+          <div className="table-wrap">{loading ? <div className="loading">Cargando…</div> : (
+            <table className="data-table"><thead><tr><th>Nombre</th><th style={{ textAlign: 'right' }}>% comisión</th><th style={{ width: 140 }}></th></tr></thead>
+              <tbody>{items.length === 0 ? <tr><td colSpan={3} style={{ padding: 40, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin closers todavía. Pulsa "Añadir closer".</td></tr> : items.map(it => (
+                <tr key={it.id}><td className="name">{it.nombre}</td><td className="num">{it.comision_pct || 0}%</td><td><div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="ghost-btn" onClick={() => setForm(it)}>Editar</button><button className="ghost-btn" onClick={() => del(it)} style={{ color: 'var(--neg)' }}>Borrar</button></div></td></tr>
+              ))}</tbody></table>
+          )}</div>
+        </div>
+      </>)}
+    </div>
+  );
+};
+
 const ComisionesEntrenadores = () => {
   const [tramos, setTramos] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);
@@ -3733,6 +3810,7 @@ const App = () => {
       case 'economia/gastos': return <EconomiaGastos/>;
       case 'economia/comisiones-entrenadores': return <ComisionesEntrenadores/>;
       case 'economia/comisiones-setters': return <ComisionesSetters/>;
+      case 'economia/comisiones-closers': return <ComisionesClosers/>;
       case 'ajustes/servicios': return <Servicios/>;
       default: return <GenericEmpty route={route}/>;
     }
