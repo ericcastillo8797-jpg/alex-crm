@@ -239,6 +239,9 @@ a { color: inherit; text-decoration: none; }
 
 /* TABLE */
 .table-wrap { overflow-x: auto; }
+.table-wrap::-webkit-scrollbar { height: 11px; }
+.table-wrap::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; }
+.table-wrap::-webkit-scrollbar-track { background: var(--bg-2); }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .data-table th { text-align: left; padding: 12px 18px; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; border-bottom: 1px solid var(--line); background: var(--bg-1); white-space: nowrap; }
 .data-table td { padding: 14px 18px; border-bottom: 1px solid var(--line); color: var(--ink-dim); vertical-align: middle; }
@@ -318,7 +321,8 @@ a { color: inherit; text-decoration: none; }
 
 /* PANEL DERECHO DE MÉTRICAS */
 .app.has-panel { grid-template-columns: 264px minmax(0,1180px) minmax(320px,1fr); }
-.app.has-panel-min { grid-template-columns: 264px minmax(0,1180px) 40px; }
+.app.has-panel-min { grid-template-columns: 264px 1fr 40px; }
+.app.has-panel-min .page { max-width: none; }
 .metrics-panel.collapsed { display: block; padding: 12px 4px; }
 .mp-toggle { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 4px; }
 .mp-toggle:hover { color: var(--ink); }
@@ -1115,13 +1119,15 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
     fetch();
   },[]);
 
-  const getContrato = c => c.contratos?.[c.contratos.length-1];
+  const isActivo = c => c.contratos?.some(x=>x.estado==='activo');
+  const getContrato = c => c.contratos?.find(x=>x.estado==='activo') || c.contratos?.[c.contratos.length-1];
 
   const filtered = useMemo(()=>{
     return clientes
-      .filter(c => filter==='todos' ? true : filter==='activos' ? c.activo : !c.activo)
+      .filter(c => filter==='todos' ? true : filter==='activos' ? isActivo(c) : !isActivo(c))
       .filter(c => canal==='todos' ? true : getContrato(c)?.canal===canal)
-      .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()));
+      .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()))
+      .sort((a,b)=> (isActivo(b)?1:0)-(isActivo(a)?1:0) || (a.nombre||'').localeCompare(b.nombre||''));
   },[clientes, filter, canal, search]);
 
   return (
@@ -1133,7 +1139,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
         </div>
         <div className="page-meta">
           <span className="dot"/>
-          <span>{clientes.filter(c=>c.activo).length} activos · {clientes.filter(c=>!c.activo).length} inactivos</span>
+          <span>{clientes.filter(isActivo).length} activos · {clientes.filter(c=>!isActivo(c)).length} inactivos</span>
         </div>
       </div>
 
@@ -1207,7 +1213,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_inicio||'—'}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_fin||'—'}</td>
                       <td style={{textAlign:'right'}}>
-                        {c.activo
+                        {isActivo(c)
                           ? dias !== null && dias <= 30
                             ? <span className="chip vencido">{dias <= 0 ? 'Vencido' : `${dias}d`}</span>
                             : <span className="chip activo">Activo</span>
@@ -1244,11 +1250,13 @@ const ClientesListaEntrenador = ({ setRoute, setSelectedCliente }) => {
     fetch();
   },[]);
 
+  const isActivo = c => c.contratos?.some(x=>x.estado==='activo');
   const filtered = useMemo(()=>{
     return clientes
-      .filter(c => filter==='todos' ? true : filter==='activos' ? c.activo : !c.activo)
-      .filter(c => canal==='todos' ? true : (c.contratos?.[c.contratos.length-1]?.canal===canal))
-      .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()));
+      .filter(c => filter==='todos' ? true : filter==='activos' ? isActivo(c) : !isActivo(c))
+      .filter(c => canal==='todos' ? true : (c.contratos?.find(x=>x.estado==='activo')||c.contratos?.[c.contratos.length-1])?.canal===canal)
+      .filter(c => !search || c.nombre.toLowerCase().includes(search.toLowerCase()))
+      .sort((a,b)=> (isActivo(b)?1:0)-(isActivo(a)?1:0) || (a.nombre||'').localeCompare(b.nombre||''));
   },[clientes, filter, canal, search]);
 
   const getContrato = c => c.contratos?.[c.contratos.length-1];
@@ -1262,7 +1270,7 @@ const ClientesListaEntrenador = ({ setRoute, setSelectedCliente }) => {
         </div>
         <div className="page-meta">
           <span className="dot"/>
-          <span>{clientes.filter(c=>c.activo).length} activos · {clientes.filter(c=>!c.activo).length} inactivos</span>
+          <span>{clientes.filter(isActivo).length} activos · {clientes.filter(c=>!isActivo(c)).length} inactivos</span>
         </div>
       </div>
 
@@ -1326,7 +1334,7 @@ const ClientesListaEntrenador = ({ setRoute, setSelectedCliente }) => {
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_inicio||'—'}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_fin||'—'}</td>
                       <td style={{textAlign:'right'}}>
-                        {c.activo
+                        {isActivo(c)
                           ? dias !== null && dias <= 30
                             ? <span className="chip vencido">{dias <= 0 ? 'Vencido' : `${dias}d`}</span>
                             : <span className="chip activo">Activo</span>
@@ -2416,6 +2424,13 @@ const EconomiaGastos = () => {
 };
 
 // ─── NUEVO CLIENTE ───────────────────────────────────────────────────────────
+// Campos de formulario ESTABLES (definidos a nivel de módulo para que el input no pierda el foco al escribir)
+const FLD_IS = { padding: '10px 12px', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%' };
+const FLD_SS = { ...FLD_IS, appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 };
+const FLbl = ({ t }) => <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{t}</span>;
+const FF = ({ label, val, onCh, type = 'text', placeholder = '' }) => <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><FLbl t={label} /><input type={type} value={val} onChange={e => onCh(e.target.value)} placeholder={placeholder} style={FLD_IS} /></div>;
+const FS = ({ label, val, onCh, children }) => <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><FLbl t={label} /><select value={val} onChange={e => onCh(e.target.value)} style={FLD_SS}>{children}</select></div>;
+
 const NuevoCliente = ({ setRoute }) => {
   const [planes, setPlanes] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);
@@ -2436,12 +2451,7 @@ const NuevoCliente = ({ setRoute }) => {
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
   const sc = (k,v) => setCtrt(c=>({...c,[k]:v}));
 
-  const IS = {padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%'};
-  const SS = {...IS,appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center',paddingRight:32};
-  const Lbl = ({t}) => <span style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)'}}>{t}</span>;
-  const FF = ({label,val,onCh,type='text',placeholder=''}) => <div style={{display:'flex',flexDirection:'column',gap:6}}><Lbl t={label}/><input type={type} value={val} onChange={e=>onCh(e.target.value)} placeholder={placeholder} style={IS}/></div>;
-  const FS = ({label,val,onCh,children}) => <div style={{display:'flex',flexDirection:'column',gap:6}}><Lbl t={label}/><select value={val} onChange={e=>onCh(e.target.value)} style={SS}>{children}</select></div>;
-  const SH = ({t,i}) => <div style={{gridColumn:'1 / -1',paddingBottom:8,borderBottom:'1px solid var(--line)',marginTop:4}}><h3 style={{fontFamily:'var(--font-serif)',fontSize:20,color:'var(--ink)'}}>{t}{i&&<span style={{fontStyle:'italic',color:'var(--stone-muted)'}}> {i}</span>}</h3></div>;
+  const SH = ({t,i}) =><div style={{gridColumn:'1 / -1',paddingBottom:8,borderBottom:'1px solid var(--line)',marginTop:4}}><h3 style={{fontFamily:'var(--font-serif)',fontSize:20,color:'var(--ink)'}}>{t}{i&&<span style={{fontStyle:'italic',color:'var(--stone-muted)'}}> {i}</span>}</h3></div>;
   const g4 = {display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16};
   const sp2 = {gridColumn:'span 2'};
 
@@ -2543,8 +2553,8 @@ const NuevoCliente = ({ setRoute }) => {
             <div style={sp2}><FF label="Fecha fin" val={ctrt.fecha_fin} onCh={v=>sc('fecha_fin',v)} type="date"/></div>
           </div>
           <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:6}}>
-            <Lbl t="Notas / cosas a destacar"/>
-            <textarea value={form.notas} onChange={e=>sf('notas',e.target.value)} placeholder="Lesiones, preferencias, recordatorios…" style={{...IS,minHeight:100,resize:'vertical'}}/>
+            <FLbl t="Notas / cosas a destacar"/>
+            <textarea value={form.notas} onChange={e=>sf('notas',e.target.value)} placeholder="Lesiones, preferencias, recordatorios…" style={{...FLD_IS,minHeight:100,resize:'vertical'}}/>
           </div>
         </div>
       </div>
@@ -2585,10 +2595,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   });
   useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
-  const IS = {padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%'};
-  const SS = {...IS,appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center',paddingRight:32};
-  const Lbl = ({t}) => <span style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)'}}>{t}</span>;
-  const MF = ({label,k,type='text'}) => <div style={{display:'flex',flexDirection:'column',gap:6}}><Lbl t={label}/><input type={type} value={form[k]} onChange={e=>sf(k,e.target.value)} style={IS}/></div>;
+  const SS = FLD_SS;
 
   const save = async () => {
     if (!form.fecha_inicio || !form.fecha_fin) { setError('Las fechas son obligatorias.'); return; }
@@ -2629,20 +2636,20 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
       {error && <div style={{padding:'10px 14px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:8,marginBottom:16,fontSize:13,color:'var(--neg)'}}>{error}</div>}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <div style={{gridColumn:'span 2',display:'flex',flexDirection:'column',gap:6}}>
-          <Lbl t="Plan"/>
+          <FLbl t="Plan"/>
           <select value={form.plan_id} onChange={e=>{ const p=planes.find(x=>x.id===e.target.value); setForm(f=>({...f, plan_id:e.target.value, ...(p?{precio_eur:p.precio_eur??f.precio_eur, precio_usd:p.precio_usd??f.precio_usd}:{})})); }} style={SS}>
             <option value="">— Mismo plan</option>
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </div>
-        <MF label="Nueva fecha inicio" k="fecha_inicio" type="date"/>
-        <MF label="Nueva fecha fin" k="fecha_fin" type="date"/>
-        <MF label="Precio EUR" k="precio_eur" type="number"/>
-        <MF label="Precio USD" k="precio_usd" type="number"/>
-        <MF label="Comisión banco EUR" k="comision_banco_eur" type="number"/>
-        <MF label="Comisión banco USD" k="comision_banco_usd" type="number"/>
+        <FF label="Nueva fecha inicio" val={form.fecha_inicio} onCh={v=>sf('fecha_inicio',v)} type="date"/>
+        <FF label="Nueva fecha fin" val={form.fecha_fin} onCh={v=>sf('fecha_fin',v)} type="date"/>
+        <FF label="Precio EUR" val={form.precio_eur} onCh={v=>sf('precio_eur',v)} type="number"/>
+        <FF label="Precio USD" val={form.precio_usd} onCh={v=>sf('precio_usd',v)} type="number"/>
+        <FF label="Comisión banco EUR" val={form.comision_banco_eur} onCh={v=>sf('comision_banco_eur',v)} type="number"/>
+        <FF label="Comisión banco USD" val={form.comision_banco_usd} onCh={v=>sf('comision_banco_usd',v)} type="number"/>
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          <Lbl t="Método de pago"/>
+          <FLbl t="Método de pago"/>
           <select value={form.metodo_pago} onChange={e=>sf('metodo_pago',e.target.value)} style={SS}>
             {['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}
           </select>
@@ -2660,10 +2667,7 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   const [form, setForm] = useState({ plan_id:'', precio_diferencia_eur:0, precio_diferencia_usd:0, comision_banco_eur:0, comision_banco_usd:0, fecha_inicio_nueva:'', fecha_fin_nueva:'' });
   useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
-  const IS = {padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',width:'100%'};
-  const SS = {...IS,appearance:'none',backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23a6a195' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\")",backgroundRepeat:'no-repeat',backgroundPosition:'right 12px center',paddingRight:32};
-  const Lbl = ({t}) => <span style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)'}}>{t}</span>;
-  const MF = ({label,k,type='text'}) => <div style={{display:'flex',flexDirection:'column',gap:6}}><Lbl t={label}/><input type={type} value={form[k]} onChange={e=>sf(k,e.target.value)} style={IS}/></div>;
+  const SS = FLD_SS;
 
   const save = async () => {
     setSaving(true); setError('');
@@ -2699,18 +2703,18 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
       {error && <div style={{padding:'10px 14px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:8,marginBottom:16,fontSize:13,color:'var(--neg)'}}>{error}</div>}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <div style={{gridColumn:'span 2',display:'flex',flexDirection:'column',gap:6}}>
-          <Lbl t="Plan nuevo"/>
+          <FLbl t="Plan nuevo"/>
           <select value={form.plan_id} onChange={e=>sf('plan_id',e.target.value)} style={SS}>
             <option value="">— Seleccionar plan</option>
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </div>
-        <MF label="Diferencia EUR" k="precio_diferencia_eur" type="number"/>
-        <MF label="Diferencia USD" k="precio_diferencia_usd" type="number"/>
-        <MF label="Comisión banco EUR" k="comision_banco_eur" type="number"/>
-        <MF label="Comisión banco USD" k="comision_banco_usd" type="number"/>
-        <MF label="Nueva fecha inicio" k="fecha_inicio_nueva" type="date"/>
-        <MF label="Nueva fecha fin" k="fecha_fin_nueva" type="date"/>
+        <FF label="Diferencia EUR" val={form.precio_diferencia_eur} onCh={v=>sf('precio_diferencia_eur',v)} type="number"/>
+        <FF label="Diferencia USD" val={form.precio_diferencia_usd} onCh={v=>sf('precio_diferencia_usd',v)} type="number"/>
+        <FF label="Comisión banco EUR" val={form.comision_banco_eur} onCh={v=>sf('comision_banco_eur',v)} type="number"/>
+        <FF label="Comisión banco USD" val={form.comision_banco_usd} onCh={v=>sf('comision_banco_usd',v)} type="number"/>
+        <FF label="Nueva fecha inicio" val={form.fecha_inicio_nueva} onCh={v=>sf('fecha_inicio_nueva',v)} type="date"/>
+        <FF label="Nueva fecha fin" val={form.fecha_fin_nueva} onCh={v=>sf('fecha_fin_nueva',v)} type="date"/>
       </div>
     </ModalShell>
   );
