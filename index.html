@@ -2595,6 +2595,11 @@ const NuevoCliente = ({ setRoute }) => {
               <button key={v} type="button" onClick={()=>sc('canal',v)} style={{padding:'14px 26px',fontSize:14,fontWeight:600,borderRadius:10,border:'1px solid '+(ctrt.canal===v?'var(--ink)':'var(--line)'),background:ctrt.canal===v?'var(--ink)':'var(--bg-1)',color:ctrt.canal===v?'#fff':'var(--ink-dim)',cursor:'pointer'}}>{lbl}</button>
             ))}
           </div>
+          {(ctrt.canal==='ONLINE'||ctrt.canal==='PRESENCIAL') && (
+            <div style={{marginTop:18,maxWidth:380}}>
+              <FS label="Entrenador asignado" val={ctrt.entrenador_id} onCh={v=>sc('entrenador_id',v)}><option value="">— Sin entrenador —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</FS>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2638,7 +2643,6 @@ const NuevoCliente = ({ setRoute }) => {
           <div style={sp2}><FS label="Canal de cierre" val={ctrt.canal_cierre} onCh={v=>sc('canal_cierre',v)}>{['CHAT','LLAMADA','OTRO'].map(c=><option key={c}>{c}</option>)}</FS></div>
           <div style={sp2}><FS label="Setter" val={ctrt.setter_id} onCh={v=>sc('setter_id',v)}><option value="">— Sin setter</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS></div>
           <FF label="% Comisión setter" val={ctrt.porcentaje_comision_setter} onCh={v=>sc('porcentaje_comision_setter',v)} type="number" placeholder="10"/>
-          <div style={{...sp2,gridColumn:'span 4'}}><FS label="Entrenador" val={ctrt.entrenador_id} onCh={v=>sc('entrenador_id',v)}><option value="">— Sin entrenador</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</FS></div>
         </div></div>
       </div>
 
