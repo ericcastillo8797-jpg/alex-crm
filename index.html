@@ -764,9 +764,12 @@ const revenueInMonth = (c, y, m, field) => {
   const d0 = c.fecha_inicio ? new Date(c.fecha_inicio) : null; if (!d0 || isNaN(d0)) return 0;
   const startM = d0.getFullYear() * 12 + d0.getMonth();
   const tgt = y * 12 + m;
+  const nowD = new Date();
+  const nowM = nowD.getFullYear() * 12 + nowD.getMonth();
   if (c.planes && c.planes.duracion_meses === 1) {
     const d1 = c.fecha_fin ? new Date(c.fecha_fin) : null;
-    const endM = (d1 && !isNaN(d1)) ? d1.getFullYear() * 12 + d1.getMonth() : startM;
+    let endM = (d1 && !isNaN(d1)) ? d1.getFullYear() * 12 + d1.getMonth() : startM;
+    if (endM > nowM) endM = nowM; // no proyectar facturación a meses futuros
     return (tgt >= startM && tgt <= endM) ? v : 0;
   }
   return (tgt === startM) ? v : 0;
