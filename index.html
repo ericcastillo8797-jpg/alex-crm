@@ -3922,7 +3922,7 @@ const MetricsPanel = () => {
     setContratos(cs || []);
     const { data: ps } = await window._sb.from('pagos').select('monto_eur,monto_usd,fecha,canal');
     setPagos(ps || []);
-    const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal');
+    const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal,imputa_canal');
     setGastos(gs || []);
     const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
     setEditores(eds || []);
@@ -3957,10 +3957,13 @@ const MetricsPanel = () => {
   const benE = mesE - gMesE, benU = mesU - gMesU;
   const toUSDp = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
   const factCanal = cl => sumPagosUsd(pagosMes(pagos, y, mo, cl));
-  const gastoCanalP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
+  // Personal por canal: pago a entrenadores de los clientes activos del canal + gastos del panel Personal imputados a ese canal.
+  const personalCanalP = cl => contratos.filter(c => c.canal === cl && c.estado === 'activo').reduce((s, c) => s + toUSDp(c.pago_entrenador_eur, c.pago_entrenador_usd), 0);
+  const personalFijoP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === 'PERSONAL' && g.imputa_canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
+  const gastoCanalP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + personalCanalP(cl) + personalFijoP(cl);
   const canalRows = [['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => ({ lbl, fact: factCanal(cl), gasto: gastoCanalP(cl) }));
   const totFact = canalRows.reduce((s, r) => s + r.fact, 0);
-  const totGasto = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + edE * 1.08 + edU;
+  const totGasto = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + personalCanalP('ONLINE') + personalCanalP('PRESENCIAL') + personalCanalP('SKOOL') + edE * 1.08 + edU;
   // Valor por hora presencial: facturación presencial activa / horas presenciales al mes
   const presAct = contratos.filter(c => c.estado === 'activo' && c.canal === 'PRESENCIAL');
   // Sesiones/mes = nº del plan. Valor de tu hora = (lo que cobras − lo que pagas al entrenador) ÷ sesiones.
