@@ -507,7 +507,6 @@ const NAV = [
   { id:'equipo', label:'Equipo', icon:'team', items:[
     {id:'equipo/entrenadores', label:'Entrenadores'},
     {id:'equipo/setters', label:'Setters'},
-    {id:'equipo/editores', label:'Editor de vídeo'},
     {id:'equipo/roles', label:'Roles y permisos'},
   ]},
   { id:'ajustes', label:'Ajustes', icon:'settings', items:[
@@ -760,19 +759,11 @@ const CanalMonthlyChart = ({ contratos, year, color }) => {
 // Plan mensual (duración 1 mes) => cobra CADA mes activo (fecha_inicio..fecha_fin).
 // Plan de varios meses (anual/semestral/trimestral) => pago único en el mes de inicio.
 const revenueInMonth = (c, y, m, field) => {
+  // Cada contrato/pago cuenta UNA vez, en el mes de su fecha_inicio (= cuando pagó).
+  // Las renovaciones se registran como pagos nuevos en su mes (se gestionan aparte).
   const v = c[field] || 0; if (!v) return 0;
   const d0 = c.fecha_inicio ? new Date(c.fecha_inicio) : null; if (!d0 || isNaN(d0)) return 0;
-  const startM = d0.getFullYear() * 12 + d0.getMonth();
-  const tgt = y * 12 + m;
-  const nowD = new Date();
-  const nowM = nowD.getFullYear() * 12 + nowD.getMonth();
-  if (c.planes && c.planes.duracion_meses === 1) {
-    const d1 = c.fecha_fin ? new Date(c.fecha_fin) : null;
-    let endM = (d1 && !isNaN(d1)) ? d1.getFullYear() * 12 + d1.getMonth() : startM;
-    if (endM > nowM) endM = nowM; // no proyectar facturación a meses futuros
-    return (tgt >= startM && tgt <= endM) ? v : 0;
-  }
-  return (tgt === startM) ? v : 0;
+  return (d0.getFullYear() === y && d0.getMonth() === m) ? v : 0;
 };
 
 const MonthlyRevenueChart = ({ year }) => {
@@ -2238,8 +2229,6 @@ const ComisionesSetters = () => {
             <thead><tr><th>Cierre de venta</th><th style={{textAlign:'right'}}>%</th></tr></thead>
             <tbody>
               <tr><td style={{fontWeight:500}}>Chat</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>10%</td></tr>
-              <tr><td style={{fontWeight:500}}>Llamada</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>5%</td></tr>
-              <tr><td style={{fontWeight:500}}>Evaluación presencial</td><td style={{textAlign:'right',color:'var(--ink-faint)'}}>—</td></tr>
             </tbody>
           </table>
         </div>
@@ -2521,10 +2510,11 @@ const NuevoCliente = ({ setRoute }) => {
   const [planes, setPlanes] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);
   const [setters, setSetters] = useState([]);
+  const [closers, setClosers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre:'', pais:'', email:'', prefijo_telefono:'+34', telefono:'', objetivo:'', notas:'', direccion:'' });
-  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, metodo_pago:'Stripe', divisa_principal:'EUR', horas_semana:'', fecha_inicio:'', fecha_fin:'' });
+  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, closer_id:'', porcentaje_comision_closer:'', precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, metodo_pago:'Stripe', divisa_principal:'EUR', horas_semana:'', fecha_inicio:'', fecha_fin:'' });
 
   useEffect(()=>{
     Promise.all([
@@ -2532,6 +2522,7 @@ const NuevoCliente = ({ setRoute }) => {
       window._sb.from('entrenadores').select('id,nombre').eq('activo',true).order('nombre'),
       window._sb.from('setters').select('id,nombre').eq('activo',true).order('nombre'),
     ]).then(([p,e,s])=>{ setPlanes(p.data||[]); setEntrenadores(e.data||[]); setSetters(s.data||[]); });
+    window._sb.from('closers').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setClosers(data||[])).catch(()=>{});
   },[]);
 
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -2552,7 +2543,7 @@ const NuevoCliente = ({ setRoute }) => {
     }).select().single();
     if (ce) { setError(ce.message); setSaving(false); return; }
     if (ctrt.fecha_inicio && ctrt.fecha_fin) {
-      await window._sb.from('contratos').insert({
+      const { data: cont } = await window._sb.from('contratos').insert({
         cliente_id:cd.id, plan_id:ctrt.plan_id||null, canal:ctrt.canal,
         entrenador_id:ctrt.entrenador_id||null, setter_id:ctrt.setter_id||null,
         canal_cierre:ctrt.canal_cierre, porcentaje_comision_setter:Number(ctrt.porcentaje_comision_setter)||null,
@@ -2561,7 +2552,10 @@ const NuevoCliente = ({ setRoute }) => {
         metodo_pago:ctrt.metodo_pago, divisa_principal:ctrt.divisa_principal,
         horas_semana:Number(ctrt.horas_semana)||null,
         fecha_inicio:ctrt.fecha_inicio, fecha_fin:ctrt.fecha_fin, estado:'activo',
-      });
+      }).select('id').single();
+      if (cont && (ctrt.closer_id || ctrt.porcentaje_comision_closer)) {
+        await window._sb.from('contratos').update({ closer_id:ctrt.closer_id||null, porcentaje_comision_closer:Number(ctrt.porcentaje_comision_closer)||null }).eq('id', cont.id);
+      }
     }
     setSaving(false); setRoute('clientes/lista');
   };
@@ -2640,9 +2634,11 @@ const NuevoCliente = ({ setRoute }) => {
         <div className="panel-head"><h2 className="panel-title">Pago <span className="italic">y cierre</span></h2></div>
         <div className="panel-body"><div style={g4}>
           <div style={sp2}><FS label="Método de pago" val={ctrt.metodo_pago} onCh={v=>sc('metodo_pago',v)}>{['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}</FS></div>
-          <div style={sp2}><FS label="Canal de cierre" val={ctrt.canal_cierre} onCh={v=>sc('canal_cierre',v)}>{['CHAT','LLAMADA','OTRO'].map(c=><option key={c}>{c}</option>)}</FS></div>
+          <div style={sp2}><FS label="Canal de cierre" val={ctrt.canal_cierre} onCh={v=>sc('canal_cierre',v)}><option value="CHAT">CHAT</option><option value="LLAMADA">LLAMADA</option><option value="OTRO">Evaluación presencial</option></FS></div>
           <div style={sp2}><FS label="Setter" val={ctrt.setter_id} onCh={v=>sc('setter_id',v)}><option value="">— Sin setter</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS></div>
           <FF label="% Comisión setter" val={ctrt.porcentaje_comision_setter} onCh={v=>sc('porcentaje_comision_setter',v)} type="number" placeholder="10"/>
+          <div style={sp2}><FS label="Closer" val={ctrt.closer_id} onCh={v=>sc('closer_id',v)}><option value="">— Sin closer</option>{closers.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</FS></div>
+          <FF label="% Comisión closer" val={ctrt.porcentaje_comision_closer} onCh={v=>sc('porcentaje_comision_closer',v)} type="number" placeholder="0"/>
         </div></div>
       </div>
 
@@ -3146,7 +3142,10 @@ const EquipoTabla = ({ tipo }) => {
 
   const eliminar = async (item) => {
     if (!confirm(`¿Eliminar a ${item.nombre}? Esta acción no se puede deshacer.`)) return;
-    await window._sb.from(table).delete().eq('id',item.id);
+    const fk = tipo==='entrenadores' ? 'entrenador_id' : 'setter_id';
+    await window._sb.from('contratos').update({[fk]: null}).eq(fk, item.id);
+    const { error } = await window._sb.from(table).delete().eq('id',item.id);
+    if (error) { alert('No se pudo eliminar: ' + error.message); return; }
     load();
   };
 
@@ -3748,7 +3747,7 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
   const [perfil, setPerfil] = useState(null);
-  const [route, setRoute] = useState('dashboard/general');
+  const [route, setRoute] = useState(()=>localStorage.getItem('af_route')||'dashboard/general');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [panelOpen, setPanelOpen] = useState(()=>localStorage.getItem('af_panel')!=='0');
@@ -3825,7 +3824,7 @@ const App = () => {
       case 'economia/comisiones-entrenadores': return <ComisionesEntrenadores/>;
       case 'economia/comisiones-setters': return <ComisionesSetters/>;
       case 'economia/comisiones-closers': return <ComisionesClosers/>;
-      case 'ajustes/servicios': return <Servicios/>;
+      case 'ajustes/servicios': return <Programas/>;
       default: return <GenericEmpty route={route}/>;
     }
   };
