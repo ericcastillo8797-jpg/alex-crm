@@ -3905,27 +3905,31 @@ const MetricsPanel = () => {
       <div className="mp-head"><span>Resumen en vivo</span></div>
       <div className="mp-card hero">
         <div className="mp-label">Facturado este mes</div>
-        <div className="mp-value">{r0(mesE)}<span className="u">€</span> · {r0(mesU)}<span className="u">$</span></div>
+        <div className="mp-value">{r0(mesU)}<span className="u">$</span> · {r0(mesE)}<span className="u">€</span></div>
         <div className="mp-sub" style={{ color: 'rgba(255,255,255,0.55)' }}>{meses[mo]} {y} · {mesC.length} ventas</div>
       </div>
       <div className="mp-card" style={{ gridColumn:'1 / -1', background:'#e7f5ec', border:'1px solid #b6e0c4' }}>
         <div className="mp-label" style={{ color:'#1f7a44' }}>Beneficio este mes</div>
-        <div className="mp-value" style={{ color:(benE<0||benU<0)?'var(--neg)':'#138a43' }}>{r0(benE)}<span className="u">€</span> · {r0(benU)}<span className="u">$</span></div>
+        <div className="mp-value">
+          <span style={{ color: benU<0?'var(--neg)':'#138a43' }}>{r0(benU)}<span className="u">$</span></span>
+          <span style={{ color:'#9ab8a6' }}> · </span>
+          <span style={{ color: benE<0?'var(--neg)':'#138a43' }}>{r0(benE)}<span className="u">€</span></span>
+        </div>
         <div className="mp-sub" style={{ color:'#3f8a5e' }}>Facturación − gastos · {activos} activos</div>
       </div>
       <div className="mp-row">
-        <div className="mp-card"><div className="mp-label">Hoy</div><div className="mp-value">{r0(sumE(hoyC))}€</div><div className="mp-sub">${r0(sumU(hoyC))}</div></div>
-        <div className="mp-card"><div className="mp-label">Esta semana</div><div className="mp-value">{r0(sumE(semC))}€</div><div className="mp-sub">${r0(sumU(semC))}</div></div>
+        <div className="mp-card"><div className="mp-label">Hoy</div><div className="mp-value">${r0(sumU(hoyC))}</div><div className="mp-sub">{r0(sumE(hoyC))}€</div></div>
+        <div className="mp-card"><div className="mp-label">Esta semana</div><div className="mp-value">${r0(sumU(semC))}</div><div className="mp-sub">{r0(sumE(semC))}€</div></div>
       </div>
       <div className="mp-card">
         <div className="mp-label">Media mensual</div>
-        <div className="mp-mini"><span>Al día</span><b>{r0(mesE / 30)}€ · ${r0(mesU / 30)}</b></div>
-        <div className="mp-mini"><span>A la semana</span><b>{r0(mesE / 4.3)}€ · ${r0(mesU / 4.3)}</b></div>
-        <div className="mp-mini"><span>Al mes</span><b>{r0(mesE)}€ · ${r0(mesU)}</b></div>
+        <div className="mp-mini"><span>Al día</span><b>${r0(mesU / 30)} · {r0(mesE / 30)}€</b></div>
+        <div className="mp-mini"><span>A la semana</span><b>${r0(mesU / 4.3)} · {r0(mesE / 4.3)}€</b></div>
+        <div className="mp-mini"><span>Al mes</span><b>${r0(mesU)} · {r0(mesE)}€</b></div>
       </div>
       <div className="mp-card">
         <div className="mp-label">Gastos fijos / mes</div>
-        <div className="mp-value">{r0(gMesE)}<span className="u">€</span> · {r0(gMesU)}<span className="u">$</span></div>
+        <div className="mp-value">{r0(gMesU)}<span className="u">$</span> · {r0(gMesE)}<span className="u">€</span></div>
       </div>
       <div className="mp-card">
         <div className="mp-label">Valor de tu hora (presencial)</div>
