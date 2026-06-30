@@ -835,11 +835,11 @@ const MonthlyRevenueChart = ({ year }) => {
     const load = async () => {
       const { data } = await window._sb.from('pagos').select('monto_eur,monto_usd,canal,fecha');
       const rows = data || [];
-      const eurMes = (cl,i) => sumPagosField(pagosMes(rows,year,i,cl),'monto_eur') + sumPagosField(pagosMes(rows,year,i,cl),'monto_usd')*0.92;
+      const usdMes = (cl,i) => sumPagosField(pagosMes(rows,year,i,cl),'monto_usd') + sumPagosField(pagosMes(rows,year,i,cl),'monto_eur')*1.08;
       const byMonth = Array.from({length:12}, (_,i) => ({
-        online:     eurMes('ONLINE',i),
-        presencial: eurMes('PRESENCIAL',i),
-        skool:      eurMes('SKOOL',i),
+        online:     usdMes('ONLINE',i),
+        presencial: usdMes('PRESENCIAL',i),
+        skool:      usdMes('SKOOL',i),
         count:      pagosMes(rows,year,i).length
       }));
       setMonthData(byMonth);
@@ -868,13 +868,13 @@ const MonthlyRevenueChart = ({ year }) => {
           tooltip: {
             backgroundColor: '#fff', titleColor: '#111110', bodyColor: '#4a4842',
             borderColor: '#e8e6df', borderWidth: 1,
-            callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)}€` }
+            callbacks: { label: c => ` ${c.dataset.label}: $${c.parsed.y.toFixed(0)}` }
           }
         },
         scales: {
           x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 }, color: '#8c8a80' } },
           y: { stacked: true, grid: { color: '#f2f0ea' }, border: { display: false },
-               ticks: { font: { family: 'JetBrains Mono', size: 11 }, color: '#8c8a80', callback: v => v===0?'':v>=1000?`${(v/1000).toFixed(0)}k€`:`${v}€` } }
+               ticks: { font: { family: 'JetBrains Mono', size: 11 }, color: '#8c8a80', callback: v => v===0?'':v>=1000?`$${(v/1000).toFixed(0)}k`:`$${v}` } }
         }
       }
     });
@@ -890,8 +890,8 @@ const MonthlyRevenueChart = ({ year }) => {
         <h2 className="panel-title">Facturación <span className="italic">mensual {year}</span></h2>
         <span className="panel-sub">
           {monthData && bestIdx>=0 && (monthData[bestIdx].online+monthData[bestIdx].presencial+monthData[bestIdx].skool)>0
-            ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total año: ${Math.round(total)}€`
-            : `Total año: ${Math.round(total)}€`}
+            ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total año: $${Math.round(total)}`
+            : `Total año: $${Math.round(total)}`}
         </span>
       </div>
       <div className="panel-body" style={{padding:'16px 20px 20px'}}>
