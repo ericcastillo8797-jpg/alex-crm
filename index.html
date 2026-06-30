@@ -2468,7 +2468,7 @@ const EconomiaGastos = () => {
   const sumGastosPresUsd = byCanal('PRESENCIAL').reduce((s,m)=>s+(m.gastos_usd||0),0);
   const sumGastosSkoolUsd = byCanal('SKOOL').reduce((s,m)=>s+(m.gastos_usd||0),0);
 
-  const canalClass = c => ({ONLINE:'online', PRESENCIAL:'presencial', SKOOL:'skool', GENERAL:''}[c]||'');
+  const canalClass = c => ({ONLINE:'online', PRESENCIAL:'presencial', SKOOL:'skool', GENERAL:'', PERSONAL:''}[c]||'');
 
   const panelGastos = (canal, titulo) => {
     const lista = gastosFijos.filter(g => g.canal === canal);
@@ -2527,9 +2527,13 @@ const EconomiaGastos = () => {
         <KpiCard label="Skool acumulado" value={`$${sumGastosSkoolUsd.toFixed(0)}`} unit="" icon="team" sub={`Gastos skool ${year}`}/>
       </div>
 
+      {panelGastos('GENERAL', <>Gastos <span className="italic">generales</span></>)}
+
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,alignItems:'start'}}>
       {panelGastos('ONLINE', <>Gastos fijos <span className="italic">online</span></>)}
       {panelGastos('PRESENCIAL', <>Gastos fijos <span className="italic">presencial</span></>)}
+      {panelGastos('PERSONAL', <>Gastos <span className="italic">personales</span></>)}
+      </div>
 
       <div className="panel">
         <div className="panel-head">
@@ -2571,9 +2575,7 @@ const EconomiaGastos = () => {
           })}
         </div>
       </div>
-      </div>
       {gastosFijos.some(g=>g.canal==='SKOOL') && panelGastos('SKOOL', <>Gastos <span className="italic">Skool</span></>)}
-      {gastosFijos.some(g=>g.canal==='GENERAL') && panelGastos('GENERAL', <>Gastos <span className="italic">generales</span></>)}
 
       {editGasto && (
         <div onClick={()=>setEditGasto(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
@@ -2586,7 +2588,7 @@ const EconomiaGastos = () => {
               <div style={{display:'flex',gap:12}}>
                 <label style={{fontSize:12,color:'var(--ink-faint)',flex:1}}>Canal
                   <select value={editGasto.canal} onChange={e=>setEditGasto({...editGasto,canal:e.target.value})} style={{width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:14,marginTop:4}}>
-                    {['ONLINE','PRESENCIAL','SKOOL','GENERAL'].map(o=><option key={o}>{o}</option>)}
+                    {['ONLINE','PRESENCIAL','SKOOL','GENERAL','PERSONAL'].map(o=><option key={o}>{o}</option>)}
                   </select>
                 </label>
                 <label style={{fontSize:12,color:'var(--ink-faint)',flex:1}}>Frecuencia
@@ -3907,6 +3909,11 @@ const MetricsPanel = () => {
         <div className="mp-value">{r0(mesE)}<span className="u">€</span> · {r0(mesU)}<span className="u">$</span></div>
         <div className="mp-sub" style={{ color: 'rgba(255,255,255,0.55)' }}>{meses[mo]} {y} · {mesC.length} ventas</div>
       </div>
+      <div className="mp-card" style={{ gridColumn:'1 / -1', background:'#e7f5ec', border:'1px solid #b6e0c4' }}>
+        <div className="mp-label" style={{ color:'#1f7a44' }}>Beneficio este mes</div>
+        <div className="mp-value" style={{ color:(benE<0||benU<0)?'var(--neg)':'#138a43' }}>{r0(benE)}<span className="u">€</span> · {r0(benU)}<span className="u">$</span></div>
+        <div className="mp-sub" style={{ color:'#3f8a5e' }}>Facturación − gastos · {activos} activos</div>
+      </div>
       <div className="mp-row">
         <div className="mp-card"><div className="mp-label">Hoy</div><div className="mp-value">{r0(sumE(hoyC))}€</div><div className="mp-sub">${r0(sumU(hoyC))}</div></div>
         <div className="mp-card"><div className="mp-label">Esta semana</div><div className="mp-value">{r0(sumE(semC))}€</div><div className="mp-sub">${r0(sumU(semC))}</div></div>
@@ -3920,11 +3927,6 @@ const MetricsPanel = () => {
       <div className="mp-card">
         <div className="mp-label">Gastos fijos / mes</div>
         <div className="mp-value">{r0(gMesE)}<span className="u">€</span> · {r0(gMesU)}<span className="u">$</span></div>
-      </div>
-      <div className="mp-card">
-        <div className="mp-label">Beneficio del mes</div>
-        <div className={'mp-value' + ((benE < 0 || benU < 0) ? ' neg' : '')}>{r0(benE)}<span className="u">€</span> · {r0(benU)}<span className="u">$</span></div>
-        <div className="mp-sub">{activos} clientes activos</div>
       </div>
       <div className="mp-card">
         <div className="mp-label">Valor de tu hora (presencial)</div>
