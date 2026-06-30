@@ -156,6 +156,9 @@ a { color: inherit; text-decoration: none; }
 .crumbs { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-faint); letter-spacing: 0.04em; }
 .crumbs .sep { opacity: 0.4; }
 .crumbs .current { color: var(--ink); }
+.quick-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.qa-btn { padding: 8px 14px; font-size: 12px; font-weight: 600; border-radius: 8px; color: #fff; border: none; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+.qa-btn:hover { opacity: 0.88; }
 .topbar-search {
   margin-left: auto; display: flex; align-items: center; gap: 8px;
   padding: 7px 12px; background: var(--bg-1); border: 1px solid var(--line);
@@ -319,14 +322,11 @@ a { color: inherit; text-decoration: none; }
 /* LOADING */
 .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 60px; color: var(--ink-faint); font-family: var(--font-mono); font-size: 13px; }
 
-/* PANEL DERECHO DE MÉTRICAS */
-.app.has-panel { grid-template-columns: 264px minmax(0,1080px) minmax(320px,1fr); }
-.app.has-panel-min { grid-template-columns: 264px 1fr 40px; }
-.app.has-panel-min .page { max-width: 1080px; }
-.metrics-panel.collapsed { display: block; padding: 12px 4px; }
+/* PANEL DERECHO DE MÉTRICAS (siempre fijo, compacto) */
+.app.has-panel { grid-template-columns: 264px 1fr 320px; }
 .mp-toggle { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 4px; }
 .mp-toggle:hover { color: var(--ink); }
-.metrics-panel { border-left: 1px solid var(--line); background: var(--bg-1); overflow-y: auto; padding: 18px 18px 28px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap: 12px; align-content: start; }
+.metrics-panel { position: sticky; top: 0; align-self: start; height: 100vh; border-left: 1px solid var(--line); background: var(--bg-1); overflow-y: auto; padding: 16px 14px 24px; display: grid; grid-template-columns: 1fr; gap: 10px; align-content: start; }
 .mp-head, .mp-card.hero, .mp-row, .mp-wide { grid-column: 1 / -1; }
 .nav-item.locked { opacity: 0.4; cursor: not-allowed; display: flex; align-items: center; justify-content: space-between; }
 .mp-head { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); }
@@ -473,7 +473,6 @@ const NAV = [
     {id:'clientes/lista', label:'Mis clientes'},
     {id:'clientes/vencimientos', label:'Vencimientos próximos'},
     {id:'clientes/etiquetas', label:'Etiquetas'},
-    {id:'clientes/formulario', label:'Formulario de clientes'},
     {id:'economia/facturacion', label:'Facturación'},
     {id:'economia/gastos', label:'Gastos'},
   ]},
@@ -629,7 +628,57 @@ const Sidebar = ({ route, setRoute, mobileOpen, setMobileOpen, user, onLogout, p
 };
 
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
-const Topbar = ({ route, onMenu }) => {
+// ─── ACCIONES RÁPIDAS (fijas arriba a la derecha, en cualquier menú) ───────────
+const QuickActions = ({ setRoute }) => {
+  const [clientes, setClientes] = useState([]);
+  const [pick, setPick] = useState(null);      // 'renovar' | 'upgrade' | 'baja'
+  const [selId, setSelId] = useState('');
+  const [modal, setModal] = useState(null);
+  const load = () => window._sb.from('clientes')
+    .select('id,nombre, contratos(id,estado,canal,fecha_inicio,fecha_fin,precio_eur,precio_usd,divisa_principal,metodo_pago,comision_banco_eur,comision_banco_usd,canal_cierre,porcentaje_comision_setter,entrenador_id,setter_id,planes(nombre))')
+    .eq('activo', true).order('nombre').then(({ data }) => setClientes(data || []));
+  useEffect(() => { load(); }, []);
+  const sel = clientes.find(c => c.id === selId) || null;
+  const contratoActual = sel ? (sel.contratos?.find(c => c.estado === 'activo') || sel.contratos?.[0] || null) : null;
+  const SS = { padding: '10px 12px', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', width: '100%', appearance: 'none' };
+  const acts = [
+    { id: 'alta', label: '+ Nuevo cliente', color: 'var(--ink)' },
+    { id: 'renovar', label: 'Renovar', color: '#b07a2a' },
+    { id: 'upgrade', label: 'Upgrade', color: '#c9a227' },
+    { id: 'baja', label: 'Baja', color: '#b04425' },
+  ];
+  const meta = { renovar: { t: 'Renovar', i: 'contrato', verbo: 'Renovar' }, upgrade: { t: 'Hacer', i: 'upgrade', verbo: 'Continuar' }, baja: { t: 'Dar de', i: 'baja', verbo: 'Continuar' } }[pick] || {};
+  return (
+    <>
+      <div className="quick-actions">
+        {acts.map(a => (
+          <button key={a.id} className="qa-btn" style={{ background: a.color }}
+            onClick={() => a.id === 'alta' ? setRoute('clientes/nuevo') : (setSelId(''), setPick(a.id))}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+      {pick && (
+        <ModalShell title={meta.t} italic={meta.i} onClose={() => setPick(null)} maxWidth={460}
+          footer={<>
+            <button className="ghost-btn" onClick={() => setPick(null)}>Cancelar</button>
+            <button disabled={!sel} onClick={() => { setModal(pick); setPick(null); }} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: sel ? 'pointer' : 'not-allowed', opacity: sel ? 1 : 0.4 }}>{meta.verbo}</button>
+          </>}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Cliente</span>
+            <select value={selId} onChange={e => setSelId(e.target.value)} style={SS}><option value="">— Selecciona un cliente —</option>{clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+            {sel && contratoActual && <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Plan actual: <b style={{ color: 'var(--ink)' }}>{contratoActual.planes?.nombre || '—'}</b> · vence {contratoActual.fecha_fin || '—'}</div>}
+          </div>
+        </ModalShell>
+      )}
+      {modal === 'renovar' && sel && <RenovarModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setModal(null); }} />}
+      {modal === 'upgrade' && sel && <UpgradeModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setModal(null); }} />}
+      {modal === 'baja' && sel && <BajaModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setSelId(''); setModal(null); }} />}
+    </>
+  );
+};
+
+const Topbar = ({ route, onMenu, setRoute, showActions }) => {
   const navGroup = NAV.find(n=>n.items.some(i=>i.id===route));
   const groupLabel = navGroup?.label || route.split('/')[0];
   const subLabel = navGroup?.items.find(i=>i.id===route)?.label;
@@ -640,6 +689,7 @@ const Topbar = ({ route, onMenu }) => {
         <span>{groupLabel}</span>
         {subLabel && <><span className="sep">/</span><span className="current">{subLabel}</span></>}
       </div>
+      {showActions && <QuickActions setRoute={setRoute}/>}
     </header>
   );
 };
@@ -3742,7 +3792,7 @@ const FormularioClientes = ({ setRoute }) => {
   );
 };
 
-const MetricsPanel = ({ open, onToggle }) => {
+const MetricsPanel = () => {
   const [contratos, setContratos] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [gastos, setGastos] = useState([]);
@@ -3758,9 +3808,9 @@ const MetricsPanel = ({ open, onToggle }) => {
     setEditores(eds || []);
   })(); }, []);
 
-  if (!open) return (
+  if (false) return (
     <aside className="metrics-panel collapsed">
-      <button className="mp-toggle" onClick={onToggle} title="Mostrar resumen en vivo">‹</button>
+      <button className="mp-toggle" title="Mostrar resumen en vivo">‹</button>
     </aside>
   );
 
@@ -3805,7 +3855,7 @@ const MetricsPanel = ({ open, onToggle }) => {
 
   return (
     <aside className="metrics-panel">
-      <div className="mp-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Resumen en vivo</span><button className="mp-toggle" onClick={onToggle} title="Minimizar">›</button></div>
+      <div className="mp-head"><span>Resumen en vivo</span></div>
       <div className="mp-card hero">
         <div className="mp-label">Facturado este mes</div>
         <div className="mp-value">{r0(mesE)}<span className="u">€</span> · {r0(mesU)}<span className="u">$</span></div>
@@ -3946,15 +3996,16 @@ const App = () => {
     }
   };
 
-  const showPanel = perfil && ['founder','admin'].includes(perfil.rol) && route !== 'economia/facturacion';
+  const isAdmin = perfil && ['founder','admin'].includes(perfil.rol);
+  const showPanel = isAdmin;
   return (
-    <div className={'app'+(showPanel?(panelOpen?' has-panel':' has-panel-min'):'')}>
+    <div className={'app'+(showPanel?' has-panel':'')}>
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
-        <Topbar route={route} onMenu={()=>setMobileOpen(true)}/>
+        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={isAdmin}/>
         {renderPage()}
       </main>
-      {showPanel && <MetricsPanel open={panelOpen} onToggle={togglePanel}/>}
+      {showPanel && <MetricsPanel/>}
     </div>
   );
 };
