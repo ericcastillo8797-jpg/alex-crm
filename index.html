@@ -511,9 +511,6 @@ const NAV = [
   ]},
   { id:'ajustes', label:'Ajustes', icon:'settings', items:[
     {id:'ajustes/servicios', label:'Servicios y planes'},
-    {id:'ajustes/etiquetas', label:'Etiquetas'},
-    {id:'ajustes/tipo-cambio', label:'Tipo de cambio'},
-    {id:'ajustes/marca', label:'Marca y facturación'},
   ]},
 ];
 
@@ -3196,6 +3193,7 @@ const RolesPermisos = () => {
 const EquipoTabla = ({ tipo }) => {
   const [items, setItems] = useState([]);
   const [counts, setCounts] = useState({});
+  const [canalCnt, setCanalCnt] = useState({});
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newNombre, setNewNombre] = useState('');
@@ -3210,13 +3208,15 @@ const EquipoTabla = ({ tipo }) => {
     const [ir, cr] = await Promise.all([
       window._sb.from(table).select('*').order('nombre'),
       tipo==='entrenadores'
-        ? window._sb.from('contratos').select('entrenador_id').eq('estado','activo')
+        ? window._sb.from('contratos').select('entrenador_id,canal').eq('estado','activo')
         : window._sb.from('contratos').select('setter_id').not('setter_id','is',null),
     ]);
-    const c = {};
-    (cr.data||[]).forEach(x=>{ const id = tipo==='entrenadores'?x.entrenador_id:x.setter_id; if(id) c[id]=(c[id]||0)+1; });
+    const c = {}, cc = {};
+    (cr.data||[]).forEach(x=>{ const id = tipo==='entrenadores'?x.entrenador_id:x.setter_id; if(!id) return; c[id]=(c[id]||0)+1;
+      if(tipo==='entrenadores'){ cc[id]=cc[id]||{ONLINE:0,PRESENCIAL:0,SKOOL:0}; if(x.canal&&cc[id][x.canal]!==undefined) cc[id][x.canal]++; } });
     setItems(ir.data||[]);
     setCounts(c);
+    setCanalCnt(cc);
     setLoading(false);
   }, [tipo]);
 
@@ -3249,6 +3249,63 @@ const EquipoTabla = ({ tipo }) => {
     load();
   };
 
+  // Clasifica al entrenador por el canal mayoritario de sus clientes activos.
+  const esPres = it => { const cc = canalCnt[it.id]; return !!(cc && cc.PRESENCIAL > cc.ONLINE); };
+  const online = items.filter(i => !esPres(i));
+  const presen = items.filter(i => esPres(i));
+
+  const tablaPanel = (lista, titulo, sub) => (
+    <div className="panel">
+      <div className="panel-head">
+        <h2 className="panel-title">{titulo}</h2>
+        <span className="panel-sub">{sub}</span>
+      </div>
+      <div className="table-wrap">
+        {loading ? <div className="loading">Cargando…</div> : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{width:'35%'}}>Nombre</th>
+                <th>Estado</th>
+                {tipo==='setters' && <><th style={{textAlign:'right'}}>% Chat</th><th style={{textAlign:'right'}}>% Llamada</th></>}
+                {tipo==='entrenadores' && <th style={{textAlign:'right'}}>Coste/hora</th>}
+                <th style={{textAlign:'right'}}>Clientes activos</th>
+                <th style={{width:120}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.length===0 ? (
+                <tr><td colSpan={tipo==='setters'?6:5} style={{padding:'48px',textAlign:'center'}}>
+                  <div className="empty-icon" style={{margin:'0 auto 14px'}}><Icon name="team" size={22}/></div>
+                  <div style={{fontFamily:'var(--font-serif)',fontSize:22,color:'var(--ink)',marginBottom:4}}>Sin {labelPlural.toLowerCase()}</div>
+                </td></tr>
+              ) : lista.map(item=>(
+                <tr key={item.id}>
+                  <td className="name"><span className="avatar-sm">{initials(item.nombre)}</span>{item.nombre}</td>
+                  <td><span className={`chip ${item.activo?'activo':'inactivo'}`}>{item.activo?'Activo':'Inactivo'}</span></td>
+                  {tipo==='setters' && <>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_chat||0}%</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_llamada||0}%</td>
+                  </>}
+                  {tipo==='entrenadores' && <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.coste_hora_usd?'$'+item.coste_hora_usd:'—'}</td>}
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{counts[item.id]||0}</td>
+                  <td style={{textAlign:'right',display:'flex',gap:6,justifyContent:'flex-end'}}>
+                    <button className="ghost-btn" style={{fontSize:12,padding:'5px 10px'}} onClick={()=>toggle(item)}>
+                      {item.activo?'Desactivar':'Activar'}
+                    </button>
+                    <button className="ghost-btn" style={{fontSize:12,padding:'5px 8px',color:'var(--neg)'}} onClick={()=>eliminar(item)}>
+                      <Icon name="trash" size={13}/>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="page">
       <div className="page-header">
@@ -3270,55 +3327,10 @@ const EquipoTabla = ({ tipo }) => {
         </div>
       )}
 
-      <div className="panel">
-        <div className="panel-head">
-          <h2 className="panel-title">Miembros <span className="italic">del equipo</span></h2>
-          <span className="panel-sub">{items.filter(i=>i.activo).length} activos</span>
-        </div>
-        <div className="table-wrap">
-          {loading ? <div className="loading">Cargando…</div> : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{width:'35%'}}>Nombre</th>
-                  <th>Estado</th>
-                  {tipo==='setters' && <><th style={{textAlign:'right'}}>% Chat</th><th style={{textAlign:'right'}}>% Llamada</th></>}
-                  {tipo==='entrenadores' && <th style={{textAlign:'right'}}>Coste/hora</th>}
-                  <th style={{textAlign:'right'}}>Clientes activos</th>
-                  <th style={{width:120}}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length===0 ? (
-                  <tr><td colSpan={tipo==='setters'?6:5} style={{padding:'48px',textAlign:'center'}}>
-                    <div className="empty-icon" style={{margin:'0 auto 14px'}}><Icon name="team" size={22}/></div>
-                    <div style={{fontFamily:'var(--font-serif)',fontSize:22,color:'var(--ink)',marginBottom:4}}>Sin {labelPlural.toLowerCase()}</div>
-                  </td></tr>
-                ) : items.map(item=>(
-                  <tr key={item.id}>
-                    <td className="name"><span className="avatar-sm">{initials(item.nombre)}</span>{item.nombre}</td>
-                    <td><span className={`chip ${item.activo?'activo':'inactivo'}`}>{item.activo?'Activo':'Inactivo'}</span></td>
-                    {tipo==='setters' && <>
-                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_chat||0}%</td>
-                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_llamada||0}%</td>
-                    </>}
-                    {tipo==='entrenadores' && <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.coste_hora_usd?'$'+item.coste_hora_usd:'—'}</td>}
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{counts[item.id]||0}</td>
-                    <td style={{textAlign:'right',display:'flex',gap:6,justifyContent:'flex-end'}}>
-                      <button className="ghost-btn" style={{fontSize:12,padding:'5px 10px'}} onClick={()=>toggle(item)}>
-                        {item.activo?'Desactivar':'Activar'}
-                      </button>
-                      <button className="ghost-btn" style={{fontSize:12,padding:'5px 8px',color:'var(--neg)'}} onClick={()=>eliminar(item)}>
-                        <Icon name="trash" size={13}/>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      {tipo==='entrenadores' ? (<>
+        {tablaPanel(online, <>Entrenadores <span className="italic">online</span></>, `${online.filter(i=>i.activo).length} activos`)}
+        {tablaPanel(presen, <>Entrenadores <span className="italic">presenciales</span></>, `${presen.filter(i=>i.activo).length} activos`)}
+      </>) : tablaPanel(items, <>Miembros <span className="italic">del equipo</span></>, `${items.filter(i=>i.activo).length} activos`)}
     </div>
   );
 };
