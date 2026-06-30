@@ -2524,7 +2524,7 @@ const EconomiaGastos = () => {
         <KpiCard label="Gastos fijos / mes" value={`${totalFijoEur.toFixed(0)}€ · $${totalFijoUsd.toFixed(0)}`} unit="" icon="money" sub="Costes recurrentes mensuales"/>
         <KpiCard label="Online acumulado" value={`${sumGastosEur.toFixed(0)}€`} unit="" icon="dashboard" sub={`Gastos online ${year}`}/>
         <KpiCard label="Presencial acumulado" value={`$${sumGastosPresUsd.toFixed(0)}`} unit="" icon="dumbbell" sub={`Gastos presencial ${year}`}/>
-        <KpiCard label="Skool acumulado" value={`$${sumGastosSkoolUsd.toFixed(0)}`} unit="" icon="team" sub={`Gastos skool ${year}`}/>
+        <KpiCard label="Personal / mes" value={`${gastosFijos.filter(g=>g.canal==='PERSONAL').reduce((s,g)=>s+(g.importe_eur||0),0).toFixed(0)}€ · $${gastosFijos.filter(g=>g.canal==='PERSONAL').reduce((s,g)=>s+(g.importe_usd||0),0).toFixed(0)}`} unit="" icon="team" sub="Pagos a trabajadores"/>
       </div>
 
       {panelGastos('GENERAL', <>Gastos <span className="italic">generales</span></>)}
@@ -2532,7 +2532,7 @@ const EconomiaGastos = () => {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,alignItems:'start'}}>
       {panelGastos('ONLINE', <>Gastos fijos <span className="italic">online</span></>)}
       {panelGastos('PRESENCIAL', <>Gastos fijos <span className="italic">presencial</span></>)}
-      {panelGastos('PERSONAL', <>Gastos <span className="italic">personales</span></>)}
+      {panelGastos('PERSONAL', <>Gastos de <span className="italic">personal</span></>)}
       </div>
 
       <div className="panel">
@@ -2575,7 +2575,6 @@ const EconomiaGastos = () => {
           })}
         </div>
       </div>
-      {gastosFijos.some(g=>g.canal==='SKOOL') && panelGastos('SKOOL', <>Gastos <span className="italic">Skool</span></>)}
 
       {editGasto && (
         <div onClick={()=>setEditGasto(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
@@ -2588,7 +2587,7 @@ const EconomiaGastos = () => {
               <div style={{display:'flex',gap:12}}>
                 <label style={{fontSize:12,color:'var(--ink-faint)',flex:1}}>Canal
                   <select value={editGasto.canal} onChange={e=>setEditGasto({...editGasto,canal:e.target.value})} style={{width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:14,marginTop:4}}>
-                    {['ONLINE','PRESENCIAL','SKOOL','GENERAL','PERSONAL'].map(o=><option key={o}>{o}</option>)}
+                    {['ONLINE','PRESENCIAL','GENERAL','PERSONAL'].map(o=><option key={o}>{o}</option>)}
                   </select>
                 </label>
                 <label style={{fontSize:12,color:'var(--ink-faint)',flex:1}}>Frecuencia
