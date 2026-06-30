@@ -670,6 +670,24 @@ const KpiCard = ({ label, value, unit, sub, icon, neg }) => (
 );
 
 // ─── DUAL KPI CARD ────────────────────────────────────────────────────────────
+const FinanceCard = ({ label, fact, gasto, count }) => {
+  const benef = fact - gasto;
+  const row = (t, v, col) => <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span style={{ color: 'var(--ink-faint)' }}>{t}</span><b style={{ fontFamily: 'var(--font-mono)', color: col || 'var(--ink)' }}>${Math.round(v)}</b></div>;
+  return (
+    <div className="kpi">
+      <div>
+        <div className="kpi-label"><span>{label}</span></div>
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {row('Facturación', fact)}
+          {row('Gastos', gasto)}
+          <div style={{ paddingTop: 7, borderTop: '1px solid var(--line)' }}>{row('Beneficio', benef, benef < 0 ? 'var(--neg)' : 'var(--pos)')}</div>
+        </div>
+      </div>
+      {count != null && <div className="kpi-foot" style={{ marginTop: 10 }}><span>—</span><span className="kpi-sub">{count} clientes</span></div>}
+    </div>
+  );
+};
+
 const DualKpiCard = ({ label, eur, usd, count, icon }) => (
   <div className="kpi">
     <div>
@@ -850,20 +868,27 @@ const DashboardGeneral = () => {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [clientes, setClientes] = useState([]);
+  const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      // Cargar contratos activos con info de cliente y plan
       const { data } = await window._sb
         .from('contratos')
         .select(`*, clientes(nombre, pais), planes(nombre, canal, duracion_meses)`);
       setClientes(data || []);
+      const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal').eq('activo', true);
+      setGastos(gs || []);
       setLoading(false);
     };
     fetchData();
   }, []);
+  const toUSD = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
+  const factUsdCanal = canal => toUSD(clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c,year,month,'precio_eur'),0), clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c,year,month,'precio_usd'),0));
+  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  const factTotalUsd = factUsdCanal('ONLINE')+factUsdCanal('PRESENCIAL')+factUsdCanal('SKOOL');
+  const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
 
   // Filtrar por mes/año según fecha_inicio del contrato
   // Clientes que facturan en el mes seleccionado (los mensuales recurren cada mes activo)
@@ -914,10 +939,10 @@ const DashboardGeneral = () => {
       </div>
 
       <div className="kpi-grid">
-        <DualKpiCard label="Online" eur={onlineEur} usd={onlineUsd} count={activeOnline} icon="dashboard"/>
-        <DualKpiCard label="Presencial" eur={presencialEur} usd={presencialUsd} count={activePresencial} icon="dumbbell"/>
-        <DualKpiCard label="Skool" eur={skoolEur} usd={skoolUsd} count={activeSkool} icon="team"/>
-        <DualKpiCard label="Total" eur={totalEur} usd={totalUsd} count={activeOnline+activePresencial+activeSkool} icon="money"/>
+        <FinanceCard label="Online" fact={factUsdCanal('ONLINE')} gasto={gastoUsdCanal('ONLINE')} count={activeOnline}/>
+        <FinanceCard label="Presencial" fact={factUsdCanal('PRESENCIAL')} gasto={gastoUsdCanal('PRESENCIAL')} count={activePresencial}/>
+        <FinanceCard label="Skool" fact={factUsdCanal('SKOOL')} gasto={gastoUsdCanal('SKOOL')} count={activeSkool}/>
+        <FinanceCard label="Total" fact={factTotalUsd} gasto={gastoTotalUsd} count={activeOnline+activePresencial+activeSkool}/>
       </div>
 
       <MonthlyRevenueChart year={year}/>
@@ -1024,16 +1049,18 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [allContratos, setAllContratos] = useState([]);
+  const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
     const fetchData = async () => {
       setLoading(true);
-      // Fetch ALL contracts for this canal — filter client-side by month
       const { data } = await window._sb.from('contratos')
-        .select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,planes(duracion_meses)')
+        .select('cliente_id,precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,planes(duracion_meses)')
         .eq('canal', canal);
       setAllContratos(data || []);
+      const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal').eq('activo', true).eq('canal', canal);
+      setGastos(gs || []);
       setLoading(false);
     };
     fetchData();
@@ -1056,6 +1083,15 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
   const ticketMedioEur = mesContratos.length > 0 ? ingresoEur/mesContratos.length : 0;
   const ticketMedioUsd = mesContratos.length > 0 ? ingresoUsd/mesContratos.length : 0;
 
+  const toUSD2 = (eur,usd)=>(Number(usd)||0)+(Number(eur)||0)*1.08;
+  const gastoMes = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD2(g.importe_eur,g.importe_usd),0);
+  const factMesUsd = toUSD2(ingresoEur, ingresoUsd);
+  const beneficioMes = factMesUsd - gastoMes;
+  const clientesUnicos = new Set(allContratos.map(c=>c.cliente_id)).size;
+  const ingresoHistUsd = allContratos.reduce((s,c)=>s+toUSD2(c.precio_eur,c.precio_usd),0);
+  const ltvMedio = clientesUnicos>0 ? ingresoHistUsd/clientesUnicos : 0;
+  const activosUnicos = new Set(allContratos.filter(c=>c.estado==='activo').map(c=>c.cliente_id)).size;
+  const retencion = clientesUnicos>0 ? Math.round(activosUnicos/clientesUnicos*100) : 0;
   const data = { activos, inactivos, ingresoEur, ingresoUsd };
 
   return (
@@ -1082,16 +1118,16 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
       {loading ? <div className="loading">Cargando…</div> : (
         <>
           <div className="kpi-grid">
-            <KpiCard label="Facturación $" value={fmt(data.ingresoUsd,'$')} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
-            <KpiCard label="Facturación €" value={fmt(data.ingresoEur)} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
-            <KpiCard label="Ticket medio $" value={ticketMedioUsd>0?fmt(ticketMedioUsd,'$'):'—'} unit="" icon="up" sub={`${mesContratos.length} contratos ese mes`}/>
-            <KpiCard label="Ticket medio €" value={ticketMedioEur>0?fmt(ticketMedioEur):'—'} unit="" icon="up" sub={`${mesContratos.length} contratos ese mes`}/>
+            <KpiCard label="Facturación $" value={`$${Math.round(factMesUsd)}`} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
+            <KpiCard label="Gastos $" value={`$${Math.round(gastoMes)}`} unit="" icon="money" sub="Gastos fijos/mes"/>
+            <KpiCard label="Beneficio $" value={`$${Math.round(beneficioMes)}`} unit="" icon="up" sub={beneficioMes<0?'en negativo':'este mes'}/>
+            <KpiCard label="Clientes activos" value={data.activos} unit="" icon="users" sub={`${data.inactivos} de baja`}/>
           </div>
           <div className="kpi-grid">
-            <KpiCard label="Clientes activos" value={data.activos} unit="" icon="users" sub="Activos ahora"/>
-            <KpiCard label="Clientes inactivos" value={data.inactivos} unit="" icon="users" sub="Histórico total"/>
-            <KpiCard label="LTV medio" value="—" unit="" icon="calendar" sub="Próximamente"/>
-            <KpiCard label="Retención" value="—" unit="" icon="check" sub="Próximamente"/>
+            <KpiCard label="LTV medio" value={`$${Math.round(ltvMedio)}`} unit="" icon="calendar" sub="Ingreso medio por cliente"/>
+            <KpiCard label="Retención" value={`${retencion}%`} unit="" icon="check" sub={`${activosUnicos}/${clientesUnicos} siguen activos`}/>
+            <KpiCard label="Ticket medio $" value={ticketMedioUsd>0?fmt(ticketMedioUsd,'$'):'—'} unit="" icon="up" sub={`${mesContratos.length} pagos este mes`}/>
+            <KpiCard label="Clientes totales" value={clientesUnicos} unit="" icon="users" sub="Histórico"/>
           </div>
           <CanalMonthlyChart
             contratos={allContratos}
@@ -1477,6 +1513,19 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // 'renovar' | 'upgrade' | 'baja'
+  const [info, setInfo] = useState({ nombre:cliente?.nombre||'', pais:cliente?.pais||'', email:cliente?.email||'', prefijo_telefono:cliente?.prefijo_telefono||'', telefono:cliente?.telefono||'', objetivo:cliente?.objetivo||'', notas:cliente?.notas||'', direccion:cliente?.direccion||'' });
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoMsg, setInfoMsg] = useState('');
+  const guardarInfo = async () => {
+    setSavingInfo(true); setInfoMsg('');
+    const { error } = await window._sb.from('clientes').update({
+      nombre:info.nombre, pais:info.pais||null, nacionalidad:info.pais||null, email:info.email||null,
+      prefijo_telefono:info.prefijo_telefono||null, telefono:info.telefono||null,
+      objetivo:info.objetivo||null, notas:info.notas||null, direccion:info.direccion||null,
+    }).eq('id', cliente.id);
+    setSavingInfo(false);
+    setInfoMsg(error ? ('Error: '+error.message) : 'Guardado ✓');
+  };
 
   const loadContratos = useCallback(async () => {
     if (!cliente) return;
@@ -1542,38 +1591,26 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
           {tab==='pagos' && <PagosTab cliente={cliente} contratos={contratos}/>}
 
           {tab==='info' && (
-            <div className="split-2">
-              <div className="panel">
-                <div className="panel-head"><h2 className="panel-title">Datos <span className="italic">personales</span></h2></div>
-                <div className="panel-body">
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-                    {[['Nombre',cliente.nombre],['País',cliente.pais],['Email',cliente.email],['Teléfono',cliente.telefono?`+${cliente.prefijo_telefono} ${cliente.telefono}`:'—'],['Objetivo',cliente.objetivo]].map(([l,v])=>(
-                      <div key={l} className="field">
-                        <label>{l}</label>
-                        <div style={{padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13}}>{v||'—'}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {cliente.notas && (
-                    <div className="field" style={{marginTop:16}}>
-                      <label>Notas</label>
-                      <div style={{padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,lineHeight:1.6}}>{cliente.notas}</div>
-                    </div>
-                  )}
-                </div>
+            <div className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title">Información <span className="italic">del cliente</span></h2>
+                <button onClick={guardarInfo} disabled={savingInfo} style={{padding:'9px 16px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',border:'none',cursor:'pointer'}}>{savingInfo?'Guardando…':'Guardar cambios'}</button>
               </div>
-              <div className="panel">
-                <div className="panel-head"><h2 className="panel-title">Dirección <span className="italic">delivery</span></h2></div>
-                <div className="panel-body">
-                  <div className="field">
-                    <label>Dirección</label>
-                    <div style={{padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13}}>{cliente.direccion||'No registrada'}</div>
-                  </div>
-                  <div style={{marginTop:16,display:'flex',alignItems:'center',gap:10}}>
-                    <span style={{fontSize:13,color:'var(--ink-dim)'}}>Servicio de comida</span>
-                    <span className={`chip ${cliente.servicio_comida?'activo':'inactivo'}`}>{cliente.servicio_comida?'Activado':'Desactivado'}</span>
-                  </div>
+              <div className="panel-body">
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                  <FF label="Nombre" val={info.nombre} onCh={v=>setInfo(f=>({...f,nombre:v}))}/>
+                  <FF label="Email" val={info.email} onCh={v=>setInfo(f=>({...f,email:v}))}/>
+                  <FF label="País / Nacionalidad" val={info.pais} onCh={v=>setInfo(f=>({...f,pais:v}))}/>
+                  <FS label="Objetivo" val={info.objetivo} onCh={v=>setInfo(f=>({...f,objetivo:v}))}><option value="">—</option>{['Perdida de peso','Ganancia de musculo','Recomposicion corporal','Otro'].map(o=><option key={o}>{o}</option>)}</FS>
+                  <FF label="Prefijo" val={info.prefijo_telefono} onCh={v=>setInfo(f=>({...f,prefijo_telefono:v}))}/>
+                  <FF label="Teléfono" val={info.telefono} onCh={v=>setInfo(f=>({...f,telefono:v}))}/>
+                  <div style={{gridColumn:'1 / -1'}}><FF label="Dirección (delivery)" val={info.direccion} onCh={v=>setInfo(f=>({...f,direccion:v}))}/></div>
                 </div>
+                <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:6}}>
+                  <FLbl t="Notas / cosas a destacar"/>
+                  <textarea value={info.notas} onChange={e=>setInfo(f=>({...f,notas:e.target.value}))} style={{...FLD_IS,minHeight:90,resize:'vertical'}}/>
+                </div>
+                {infoMsg && <div style={{marginTop:12,fontSize:13,color:infoMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{infoMsg}</div>}
               </div>
             </div>
           )}
@@ -2100,29 +2137,63 @@ const ComisionesClosers = () => {
 
 const ComisionesEntrenadores = () => {
   const [tramos, setTramos] = useState([]);
+  const [tramosPres, setTramosPres] = useState([]);
+  const [presSetup, setPresSetup] = useState(false);
   const [entrenadores, setEntrenadores] = useState([]);
-  const [clientesPorEntrenador, setClientesPorEntrenador] = useState({});
+  const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editT, setEditT] = useState(null);
+  const [editP, setEditP] = useState(null);
 
-  useEffect(()=>{
-    const load = async () => {
-      setLoading(true);
-      const [t, e, c] = await Promise.all([
-        window._sb.from('comisiones_entrenadores').select('*').order('tramo_desde'),
-        window._sb.from('entrenadores').select('*').order('nombre'),
-        window._sb.from('contratos').select('entrenador_id').eq('estado','activo'),
-      ]);
-      const counts = {};
-      (c.data||[]).forEach(x => { counts[x.entrenador_id] = (counts[x.entrenador_id]||0)+1; });
-      setTramos(t.data||[]);
-      setEntrenadores(e.data||[]);
-      setClientesPorEntrenador(counts);
-      setLoading(false);
-    };
-    load();
-  },[]);
+  const load = async () => {
+    setLoading(true);
+    const [t, e, c] = await Promise.all([
+      window._sb.from('comisiones_entrenadores').select('*').order('tramo_desde'),
+      window._sb.from('entrenadores').select('*').eq('activo', true).order('nombre'),
+      window._sb.from('contratos').select('entrenador_id,canal').eq('estado', 'activo'),
+    ]);
+    setTramos(t.data || []); setEntrenadores(e.data || []); setContratos(c.data || []);
+    const tp = await window._sb.from('comisiones_entrenadores_presencial').select('*').order('tramo_desde');
+    if (tp.error) setPresSetup(true); else { setPresSetup(false); setTramosPres(tp.data || []); }
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, []);
 
+  const clientesDe = id => contratos.filter(c => c.entrenador_id === id);
+  const esPres = id => { const cs = clientesDe(id); return cs.length > 0 && cs.filter(c => c.canal === 'PRESENCIAL').length >= cs.length / 2; };
+  const lista = entrenadores.filter(e => e.nombre !== 'Alex');
+  const online = lista.filter(e => !esPres(e.id));
+  const presen = lista.filter(e => esPres(e.id));
   const getTramo = n => tramos.find(t => n >= t.tramo_desde && n <= t.tramo_hasta);
+  const IS = { padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, width: 80, fontFamily: 'inherit' };
+
+  const saveT = async () => {
+    const row = { tramo_desde: Number(editT.tramo_desde) || 0, tramo_hasta: Number(editT.tramo_hasta) || 0, comision_por_cliente_usd: Number(editT.comision_por_cliente_usd) || 0 };
+    if (editT.id) await window._sb.from('comisiones_entrenadores').update(row).eq('id', editT.id);
+    else await window._sb.from('comisiones_entrenadores').insert(row);
+    setEditT(null); load();
+  };
+  const delT = async (id) => { if (!confirm('¿Eliminar tramo?')) return; await window._sb.from('comisiones_entrenadores').delete().eq('id', id); load(); };
+  const saveP = async () => {
+    const row = { tramo_desde: Number(editP.tramo_desde) || 0, tramo_hasta: Number(editP.tramo_hasta) || 0, pago_por_sesion_usd: Number(editP.pago_por_sesion_usd) || 0, nota: editP.nota || null };
+    if (editP.id) await window._sb.from('comisiones_entrenadores_presencial').update(row).eq('id', editP.id);
+    else await window._sb.from('comisiones_entrenadores_presencial').insert(row);
+    setEditP(null); load();
+  };
+  const delP = async (id) => { if (!confirm('¿Eliminar tramo?')) return; await window._sb.from('comisiones_entrenadores_presencial').delete().eq('id', id); load(); };
+
+  const seccion = (titulo, ents, tipo) => (
+    <div className="panel">
+      <div className="panel-head"><h2 className="panel-title">{titulo}</h2></div>
+      <div className="table-wrap"><table className="data-table">
+        <thead><tr><th>Entrenador</th><th style={{ textAlign: 'right' }}>Clientes activos</th>{tipo === 'online' && <><th style={{ textAlign: 'right' }}>$/cliente</th><th style={{ textAlign: 'right' }}>Ganancia est. $</th></>}</tr></thead>
+        <tbody>{ents.length === 0 ? <tr><td colSpan={tipo === 'online' ? 4 : 2} style={{ padding: 28, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin entrenadores aquí.</td></tr> : ents.map(e => {
+          const n = clientesDe(e.id).length; const t = getTramo(n);
+          return <tr key={e.id}><td style={{ fontWeight: 500 }}>{e.nombre}</td><td style={{ textAlign: 'right' }}>{n}</td>{tipo === 'online' && <><td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{t ? `$${t.comision_por_cliente_usd}` : '—'}</td><td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--pos)' }}>{t ? `$${n * t.comision_por_cliente_usd}` : '—'}</td></>}</tr>;
+        })}</tbody>
+      </table></div>
+    </div>
+  );
 
   return (
     <div className="page">
@@ -2130,51 +2201,41 @@ const ComisionesEntrenadores = () => {
         <div className="page-eyebrow">Economía</div>
         <h1 className="page-title">Comisiones <span className="italic">entrenadores</span></h1>
       </div></div>
-
-      <div className="panel">
-        <div className="panel-head"><h2 className="panel-title">Entrenadores <span className="italic">activos</span></h2></div>
-        <div className="table-wrap">
-          {loading ? <div className="loading">Cargando…</div> : (
+      {loading ? <div className="loading">Cargando…</div> : (<>
+        {seccion('Entrenadores online', online, 'online')}
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Plan de pago <span className="italic">online</span> · por cliente</h2><button className="ghost-btn" onClick={() => setEditT({ tramo_desde: '', tramo_hasta: '', comision_por_cliente_usd: '' })}>+ Tramo</button></div>
+          <div className="table-wrap"><table className="data-table">
+            <thead><tr><th>Desde</th><th>Hasta</th><th style={{ textAlign: 'right' }}>$/cliente</th><th style={{ width: 130 }}></th></tr></thead>
+            <tbody>
+              {tramos.map(t => editT && editT.id === t.id ? (
+                <tr key={t.id}><td><input style={IS} value={editT.tramo_desde} onChange={e => setEditT({ ...editT, tramo_desde: e.target.value })} /></td><td><input style={IS} value={editT.tramo_hasta} onChange={e => setEditT({ ...editT, tramo_hasta: e.target.value })} /></td><td style={{ textAlign: 'right' }}><input style={IS} value={editT.comision_por_cliente_usd} onChange={e => setEditT({ ...editT, comision_por_cliente_usd: e.target.value })} /></td><td style={{ textAlign: 'right' }}><button className="ghost-btn" onClick={saveT}>Guardar</button></td></tr>
+              ) : (
+                <tr key={t.id}><td>{t.tramo_desde}</td><td>{t.tramo_hasta}</td><td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 500 }}>${t.comision_por_cliente_usd}</td><td><div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}><button className="ghost-btn" onClick={() => setEditT(t)}>Editar</button><button className="ghost-btn" style={{ color: 'var(--neg)' }} onClick={() => delT(t.id)}>✕</button></div></td></tr>
+              ))}
+              {editT && !editT.id && <tr><td><input style={IS} value={editT.tramo_desde} onChange={e => setEditT({ ...editT, tramo_desde: e.target.value })} /></td><td><input style={IS} value={editT.tramo_hasta} onChange={e => setEditT({ ...editT, tramo_hasta: e.target.value })} /></td><td style={{ textAlign: 'right' }}><input style={IS} value={editT.comision_por_cliente_usd} onChange={e => setEditT({ ...editT, comision_por_cliente_usd: e.target.value })} /></td><td style={{ textAlign: 'right' }}><button className="ghost-btn" onClick={saveT}>Guardar</button></td></tr>}
+            </tbody>
+          </table></div>
+        </div>
+        {seccion('Entrenadores presenciales', presen, 'presencial')}
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Plan de pago <span className="italic">presencial</span> · por sesión</h2>{!presSetup && <button className="ghost-btn" onClick={() => setEditP({ tramo_desde: '', tramo_hasta: '', pago_por_sesion_usd: '', nota: '' })}>+ Tramo</button>}</div>
+          <div className="table-wrap">{presSetup ? <div style={{ padding: 24, fontSize: 14, color: 'var(--ink-dim)' }}>Necesita un paso de base de datos (te dejo el SQL al final). En cuanto lo ejecutes, rellenas aquí los tramos de pago por sesión.</div> : (
             <table className="data-table">
-              <thead><tr><th>Entrenador</th><th style={{textAlign:'right'}}>Clientes activos</th><th>Tramo</th><th style={{textAlign:'right'}}>$/cliente</th><th style={{textAlign:'right'}}>Ganancia estimada $</th></tr></thead>
+              <thead><tr><th>Desde</th><th>Hasta</th><th style={{ textAlign: 'right' }}>$/sesión</th><th>Nota</th><th style={{ width: 130 }}></th></tr></thead>
               <tbody>
-                {entrenadores.filter(e=>e.activo).map(e=>{
-                  const n = clientesPorEntrenador[e.id]||0;
-                  const t = getTramo(n);
-                  return (
-                    <tr key={e.id}>
-                      <td style={{fontWeight:500}}>{e.nombre}</td>
-                      <td style={{textAlign:'right'}}>{n}</td>
-                      <td style={{fontSize:12,color:'var(--ink-faint)'}}>{t?`${t.tramo_desde}–${t.tramo_hasta} clientes`:'—'}</td>
-                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{t?`$${t.comision_por_cliente_usd}`:'—'}</td>
-                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{t?`$${n*t.comision_por_cliente_usd}`:'—'}</td>
-                    </tr>
-                  );
-                })}
+                {tramosPres.length === 0 && !editP && <tr><td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--ink-faint)' }}>En blanco — pulsa "+ Tramo" para rellenarlo.</td></tr>}
+                {tramosPres.map(t => editP && editP.id === t.id ? (
+                  <tr key={t.id}><td><input style={IS} value={editP.tramo_desde} onChange={e => setEditP({ ...editP, tramo_desde: e.target.value })} /></td><td><input style={IS} value={editP.tramo_hasta} onChange={e => setEditP({ ...editP, tramo_hasta: e.target.value })} /></td><td style={{ textAlign: 'right' }}><input style={IS} value={editP.pago_por_sesion_usd} onChange={e => setEditP({ ...editP, pago_por_sesion_usd: e.target.value })} /></td><td><input style={{ ...IS, width: 160 }} value={editP.nota || ''} onChange={e => setEditP({ ...editP, nota: e.target.value })} /></td><td style={{ textAlign: 'right' }}><button className="ghost-btn" onClick={saveP}>Guardar</button></td></tr>
+                ) : (
+                  <tr key={t.id}><td>{t.tramo_desde}</td><td>{t.tramo_hasta}</td><td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 500 }}>${t.pago_por_sesion_usd}</td><td style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{t.nota || '—'}</td><td><div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}><button className="ghost-btn" onClick={() => setEditP(t)}>Editar</button><button className="ghost-btn" style={{ color: 'var(--neg)' }} onClick={() => delP(t.id)}>✕</button></div></td></tr>
+                ))}
+                {editP && !editP.id && <tr><td><input style={IS} value={editP.tramo_desde} onChange={e => setEditP({ ...editP, tramo_desde: e.target.value })} /></td><td><input style={IS} value={editP.tramo_hasta} onChange={e => setEditP({ ...editP, tramo_hasta: e.target.value })} /></td><td style={{ textAlign: 'right' }}><input style={IS} value={editP.pago_por_sesion_usd} onChange={e => setEditP({ ...editP, pago_por_sesion_usd: e.target.value })} /></td><td><input style={{ ...IS, width: 160 }} value={editP.nota || ''} onChange={e => setEditP({ ...editP, nota: e.target.value })} /></td><td style={{ textAlign: 'right' }}><button className="ghost-btn" onClick={saveP}>Guardar</button></td></tr>}
               </tbody>
             </table>
-          )}
+          )}</div>
         </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-head"><h2 className="panel-title">Tabla de <span className="italic">tramos</span></h2></div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Desde</th><th>Hasta</th><th style={{textAlign:'right'}}>$/cliente</th><th style={{textAlign:'right'}}>Ganancia mín $</th><th style={{textAlign:'right'}}>Ganancia máx $</th></tr></thead>
-            <tbody>
-              {tramos.map(t=>(
-                <tr key={t.id}>
-                  <td>{t.tramo_desde}</td><td>{t.tramo_hasta}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:500}}>${t.comision_por_cliente_usd}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--ink-faint)'}}>{t.ganancia_tramo_min_usd?`$${t.ganancia_tramo_min_usd}`:'—'}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--ink-faint)'}}>{t.ganancia_tramo_max_usd?`$${t.ganancia_tramo_max_usd}`:'—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </>)}
     </div>
   );
 };
@@ -2274,6 +2335,7 @@ const EconomiaGastos = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [editGasto, setEditGasto] = useState(null);
+  const [openMonth, setOpenMonth] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -2410,46 +2472,38 @@ const EconomiaGastos = () => {
             <thead>
               <tr>
                 <th>Mes</th>
-                <th>Canal</th>
-                <th style={{textAlign:'right'}}>Gastos €</th>
+                <th style={{textAlign:'right'}}>Facturación $</th>
                 <th style={{textAlign:'right'}}>Gastos $</th>
-                <th style={{textAlign:'right'}}>Facturación</th>
-                <th style={{textAlign:'right'}}>Beneficio</th>
+                <th style={{textAlign:'right'}}>Beneficio $</th>
               </tr>
             </thead>
             <tbody>
-              {mensual.length === 0 ? (
-                <tr><td colSpan={6} style={{textAlign:'center',padding:'40px',color:'var(--ink-faint)'}}>Sin datos para {year}</td></tr>
-              ) : mensual.map(m => {
-                const key = `${m.canal}-${m.mes}`;
-                // Use real contract revenue; fall back to stored value
-                const realFactEur = factByKey[key]?.eur ?? (m.facturacion_eur || 0);
-                const realFactUsd = factByKey[key]?.usd ?? (m.facturacion_usd || 0);
-                const gastosEur = m.gastos_eur || 0;
-                const gastosUsd = m.gastos_usd || 0;
-                const bEur = realFactEur - gastosEur;
-                const bUsd = realFactUsd - gastosUsd;
+              {Array.from({length:12},(_,i)=>i).map(i => {
+                const toU=(e,u)=>(Number(u)||0)+(Number(e)||0)*1.08;
+                const factCanal=cl=>contratos.filter(c=>c.canal===cl).reduce((s,c)=>s+revenueInMonth(c,year,i,'precio_eur')*1.08+revenueInMonth(c,year,i,'precio_usd'),0);
+                const gastoCanal=cl=>gastosFijos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===cl).reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
+                const fact=factCanal('ONLINE')+factCanal('PRESENCIAL')+factCanal('SKOOL');
+                const gasto=gastosFijos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
+                const benef=fact-gasto; const open=openMonth===i;
                 return (
-                <tr key={m.id}>
-                  <td style={{fontWeight:500}}>{MONTHS_LONG[(m.mes||1)-1]}</td>
-                  <td><span className={`tag ${canalClass(m.canal)}`}>{m.canal}</span></td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{gastosEur>0?`${gastosEur.toFixed(2)}€`:'—'}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{gastosUsd>0?`$${gastosUsd.toFixed(0)}`:'—'}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:realFactUsd>0?'var(--pos)':'inherit'}}>{realFactUsd>0?`$${realFactUsd.toFixed(0)}`:realFactEur>0?`${realFactEur.toFixed(0)}€`:'—'}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:500,color:bUsd>0?'var(--pos)':bUsd<0?'var(--neg)':'var(--ink-faint)'}}>{(bUsd!==0||gastosUsd>0||realFactUsd>0)?`${bUsd>=0?'':'-'}$${Math.abs(Math.round(bUsd))}`:'—'}</td>
-                </tr>
+                  <React.Fragment key={i}>
+                    <tr onClick={()=>setOpenMonth(open?null:i)} style={{cursor:'pointer'}}>
+                      <td style={{fontWeight:500}}>{open?'▾ ':'▸ '}{MONTHS_LONG[i]}</td>
+                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>${Math.round(fact)}</td>
+                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>${Math.round(gasto)}</td>
+                      <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:benef<0?'var(--neg)':'var(--pos)'}}>${Math.round(benef)}</td>
+                    </tr>
+                    {open && ['ONLINE','PRESENCIAL','SKOOL'].map(cl=>{ const f=factCanal(cl), g=gastoCanal(cl); return (
+                      <tr key={cl} style={{background:'var(--bg-1)',fontSize:12}}>
+                        <td style={{paddingLeft:30,color:'var(--ink-dim)'}}>{cl}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>${Math.round(f)}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>${Math.round(g)}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:(f-g)<0?'var(--neg)':'var(--pos)'}}>${Math.round(f-g)}</td>
+                      </tr>
+                    ); })}
+                  </React.Fragment>
                 );
               })}
-              {mensual.length>0 && (
-                <tr style={{borderTop:'2px solid var(--line)',background:'#faf8f4'}}>
-                  <td style={{fontWeight:700}}>TOTAL</td>
-                  <td></td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{mensual.reduce((s,m)=>s+(m.gastos_eur||0),0).toFixed(2)}€</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>${mensual.reduce((s,m)=>s+(m.gastos_usd||0),0).toFixed(0)}</td>
-                  <td></td>
-                  <td></td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -2695,15 +2749,16 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   const SS = FLD_SS;
 
   const save = async () => {
-    if (!form.fecha_inicio || !form.fecha_fin) { setError('Las fechas son obligatorias.'); return; }
+    if (!form.fecha_fin) { setError('Pon la nueva fecha de fin.'); return; }
     setSaving(true); setError('');
     if (contratoActual?.id) await window._sb.from('contratos').update({estado:'inactivo'}).eq('id',contratoActual.id);
+    const hoy = new Date(); const fechaPago = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
     const { error: err } = await window._sb.from('contratos').insert({
-      cliente_id:cliente?.id, plan_id:form.plan_id||null, canal:form.canal,
+      cliente_id:cliente?.id, plan_id:form.plan_id||null, canal:contratoActual?.canal||form.canal||'ONLINE',
       precio_eur:Number(form.precio_eur)||0, precio_usd:Number(form.precio_usd)||0,
       comision_banco_eur:Number(form.comision_banco_eur)||0, comision_banco_usd:Number(form.comision_banco_usd)||0,
       metodo_pago:form.metodo_pago, divisa_principal:form.divisa_principal,
-      fecha_inicio:form.fecha_inicio, fecha_fin:form.fecha_fin, estado:'activo',
+      fecha_inicio:fechaPago, fecha_fin:form.fecha_fin, estado:'activo',
       entrenador_id:contratoActual?.entrenador_id||null, setter_id:contratoActual?.setter_id||null,
       porcentaje_comision_setter:contratoActual?.porcentaje_comision_setter||null,
       canal_cierre:contratoActual?.canal_cierre||null,
@@ -2739,7 +2794,6 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
           </select>
         </div>
-        <FF label="Nueva fecha inicio" val={form.fecha_inicio} onCh={v=>sf('fecha_inicio',v)} type="date"/>
         <FF label="Nueva fecha fin" val={form.fecha_fin} onCh={v=>sf('fecha_fin',v)} type="date"/>
         <FF label="Precio EUR" val={form.precio_eur} onCh={v=>sf('precio_eur',v)} type="number"/>
         <FF label="Precio USD" val={form.precio_usd} onCh={v=>sf('precio_usd',v)} type="number"/>
@@ -3651,7 +3705,7 @@ const MetricsPanel = ({ open, onToggle }) => {
   useEffect(() => { (async () => {
     const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(duracion_meses)');
     setContratos(cs || []);
-    const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia');
+    const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal');
     setGastos(gs || []);
     const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
     setEditores(eds || []);
@@ -3684,6 +3738,12 @@ const MetricsPanel = ({ open, onToggle }) => {
   const gMesE = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_eur || 0), 0) + edE;
   const gMesU = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_usd || 0), 0) + edU;
   const benE = mesE - gMesE, benU = mesU - gMesU;
+  const toUSDp = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
+  const factCanal = cl => contratos.filter(c => c.canal === cl).reduce((s, c) => s + revenueInMonth(c, y, mo, 'precio_eur') * 1.08 + revenueInMonth(c, y, mo, 'precio_usd'), 0);
+  const gastoCanalP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
+  const canalRows = [['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => ({ lbl, fact: factCanal(cl), gasto: gastoCanalP(cl) }));
+  const totFact = canalRows.reduce((s, r) => s + r.fact, 0);
+  const totGasto = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + edE * 1.08 + edU;
   // Valor por hora presencial: facturación presencial activa / horas presenciales al mes
   const presAct = contratos.filter(c => c.estado === 'activo' && c.canal === 'PRESENCIAL');
   const horasMes = presAct.reduce((s, c) => s + (Number(c.horas_semana) || 0), 0) * 4.33;
@@ -3727,6 +3787,16 @@ const MetricsPanel = ({ open, onToggle }) => {
         <div className="mp-label">Valor de tu hora (presencial)</div>
         <div className="mp-value">{horasMes > 0 ? r0(valorHora) : '—'}<span className="u">/h</span></div>
         <div className="mp-sub">{horasMes > 0 ? `${r0(horasMes)} h/mes presencial` : 'mete las horas en cada cliente'}</div>
+      </div>
+      <div className="mp-card mp-wide">
+        <div className="mp-label">Por canal · {meses[mo]} (en $)</div>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', paddingBottom: 4 }}><span style={{ flex: 1 }}></span><span style={{ width: 64, textAlign: 'right' }}>Fact.</span><span style={{ width: 56, textAlign: 'right' }}>Gastos</span><span style={{ width: 64, textAlign: 'right' }}>Benef.</span></div>
+          {canalRows.map(r => { const b = r.fact - r.gasto; return (
+            <div key={r.lbl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{r.lbl}</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(r.fact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(r.gasto)}</span><span style={{ width: 64, textAlign: 'right', color: b < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(b)}</span></div>
+          ); })}
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totGasto)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totGasto) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totGasto)}</span></div>
+        </div>
       </div>
       <div className="mp-card mp-wide">
         <div className="mp-label">Facturación · últimos 6 meses</div>
