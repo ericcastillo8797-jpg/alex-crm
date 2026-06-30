@@ -521,9 +521,15 @@ const NAV = [
 const LOCKED_GROUPS = new Set(['agenda','delivery']);
 const LOCKED_ITEMS = new Set(['libreria/ejercicios','libreria/workouts','libreria/planes','libreria/alimentos','libreria/documentos','libreria/formularios']);
 
+// Menú minimalista del entrenador: solo sus clientes y sus sesiones.
+const ENTRENADOR_NAV = [{ id:'entrenador', label:'Mi panel', icon:'team', items:[
+  {id:'entrenador/clientes', label:'Mis clientes'},
+  {id:'entrenador/sesiones', label:'Mis sesiones'},
+]}];
+
 const getNavForRole = (rol) => {
   if (!rol || rol === 'founder' || rol === 'admin' || rol === 'ceo') return NAV.filter(g => g.id !== 'clientes-ent');
-  if (rol === 'entrenador') return NAV.filter(g => g.id !== 'negocio' && g.id !== 'comisiones');
+  if (rol === 'entrenador') return ENTRENADOR_NAV;
   if (rol === 'cocinera') return NAV.filter(g => g.id === 'delivery');
   return NAV;
 };
@@ -4294,6 +4300,113 @@ const SesionesPresenciales = () => {
   );
 };
 
+// ─── PANEL DEL ENTRENADOR (acceso propio, solo sus clientes/sesiones) ─────────
+const EntrenadorClientes = ({ entrenadorId, nombre }) => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(()=>{ (async()=>{
+    if (!entrenadorId) { setLoading(false); return; }
+    const { data } = await window._sb.from('contratos')
+      .select('id,canal,estado,fecha_fin,clientes(nombre,email,telefono,prefijo_telefono,objetivo),planes(nombre)')
+      .or(`entrenador_id.eq.${entrenadorId},entrenador_online_id.eq.${entrenadorId}`).eq('estado','activo');
+    const sres = await window._sb.from('sesiones').select('contrato_id,cantidad');
+    const hechas = {}; (sres.data||[]).forEach(s=>{ hechas[s.contrato_id]=(hechas[s.contrato_id]||0)+(s.cantidad||0); });
+    setRows((data||[]).map(c=>({ ...c, hechas: hechas[c.id]||0, tot: sesionesPlan(c.planes?.nombre) })));
+    setLoading(false);
+  })(); }, [entrenadorId]);
+  return (
+    <div className="page">
+      <div className="page-header"><div><div className="page-eyebrow">Entrenador</div><h1 className="page-title">Mis <span className="italic">clientes</span></h1></div></div>
+      {!entrenadorId ? <div className="panel"><div className="panel-body" style={{padding:30,color:'var(--ink-dim)'}}>Tu usuario aún no está vinculado a una ficha de entrenador. Avisa a Eric.</div></div> : (
+      <div className="panel">
+        <div className="panel-head"><h2 className="panel-title">Asignados</h2><span className="panel-sub">{rows.length} activos</span></div>
+        <div className="table-wrap">
+          {loading ? <div className="loading">Cargando…</div> : (
+            <table className="data-table">
+              <thead><tr><th>Cliente</th><th>Canal</th><th>Plan</th><th>Objetivo</th><th style={{textAlign:'right'}}>Sesiones</th><th>Contacto</th></tr></thead>
+              <tbody>
+                {rows.length===0 ? <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'var(--ink-faint)'}}>Sin clientes asignados.</td></tr> : rows.map(c=>{ const rest=c.tot-c.hechas; return (
+                  <tr key={c.id}>
+                    <td className="name">{c.clientes?.nombre}</td>
+                    <td><span className={`chip ${c.canal?.toLowerCase()}`}>{c.canal}</span></td>
+                    <td style={{fontSize:12}}>{c.planes?.nombre||'—'}</td>
+                    <td style={{fontSize:12}}>{c.clientes?.objetivo||'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{c.tot?`${c.hechas}/${c.tot}`:'—'}{c.tot&&rest<=2?' ⚠️':''}</td>
+                    <td style={{fontSize:12,color:'var(--ink-faint)'}}>{c.clientes?.telefono?`${c.clientes.prefijo_telefono||''} ${c.clientes.telefono}`:(c.clientes?.email||'—')}</td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+      )}
+    </div>
+  );
+};
+
+const EntrenadorSesiones = ({ entrenadorId }) => {
+  const [contratos, setContratos] = useState([]);
+  const [sesiones, setSesiones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ contrato_id:'', fecha:HOY_STR(), cantidad:1 });
+  const IS = { padding:'9px 12px', background:'var(--bg)', border:'1px solid var(--line)', borderRadius:8, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%' };
+  const load = async () => {
+    setLoading(true);
+    if (!entrenadorId) { setLoading(false); return; }
+    const { data: ct } = await window._sb.from('contratos').select('id,cliente_id,estado,pago_entrenador_usd,fecha_fin,clientes(nombre),planes(nombre)').eq('canal','PRESENCIAL').eq('entrenador_id',entrenadorId).eq('estado','activo').order('fecha_fin');
+    setContratos(ct||[]);
+    const sres = await window._sb.from('sesiones').select('*, clientes(nombre)').eq('entrenador_id',entrenadorId).order('fecha',{ascending:false});
+    if (sres.error) { setNeedsSetup(true); setSesiones([]); } else { setNeedsSetup(false); setSesiones(sres.data||[]); }
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); }, [entrenadorId]);
+  const sf = (k,v)=>setForm(f=>({...f,[k]:v}));
+  const consumidas = cid => sesiones.filter(s=>s.contrato_id===cid).reduce((a,s)=>a+(s.cantidad||0),0);
+  const guardar = async () => {
+    if (!form.contrato_id) return; setSaving(true);
+    const c = contratos.find(x=>x.id===form.contrato_id);
+    const cant = Number(form.cantidad)||0;
+    await window._sb.from('sesiones').insert({ cliente_id:c?.cliente_id, contrato_id:form.contrato_id, entrenador_id:entrenadorId, fecha:form.fecha, cantidad:cant, pago_usd:(c?.pago_entrenador_usd||0)*cant });
+    setSaving(false); setForm({ contrato_id:'', fecha:HOY_STR(), cantidad:1 }); load();
+  };
+  return (
+    <div className="page">
+      <div className="page-header"><div><div className="page-eyebrow">Entrenador</div><h1 className="page-title">Mis <span className="italic">sesiones</span></h1></div></div>
+      {!entrenadorId ? <div className="panel"><div className="panel-body" style={{padding:30,color:'var(--ink-dim)'}}>Tu usuario aún no está vinculado a una ficha de entrenador. Avisa a Eric.</div></div> : needsSetup ? <div className="panel"><div className="panel-body" style={{padding:30}}>Falta activar las sesiones (Eric tiene que pegar un SQL).</div></div> : (<>
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Registrar <span className="italic">sesiones hechas</span></h2></div>
+          <div className="panel-body">
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 0.8fr auto',gap:12,alignItems:'end'}}>
+              <div><FLbl t="Cliente"/><select value={form.contrato_id} onChange={e=>sf('contrato_id',e.target.value)} style={IS}><option value="">— Cliente —</option>{contratos.map(c=><option key={c.id} value={c.id}>{c.clientes?.nombre} · {c.planes?.nombre}</option>)}</select></div>
+              <div><FLbl t="Fecha"/><input type="date" value={form.fecha} onChange={e=>sf('fecha',e.target.value)} style={IS}/></div>
+              <div><FLbl t="Sesiones hechas"/><input type="number" value={form.cantidad} onChange={e=>sf('cantidad',e.target.value)} style={IS}/></div>
+              <button onClick={guardar} disabled={saving||!form.contrato_id} style={{padding:'10px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:600,border:'none',cursor:'pointer',height:38}}>{saving?'…':'Registrar'}</button>
+            </div>
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Mis clientes <span className="italic">presenciales</span></h2></div>
+          <div className="table-wrap">
+            {loading ? <div className="loading">Cargando…</div> : (
+              <table className="data-table">
+                <thead><tr><th>Cliente</th><th style={{textAlign:'right'}}>Plan</th><th style={{textAlign:'right'}}>Hechas</th><th style={{textAlign:'right'}}>Restantes</th></tr></thead>
+                <tbody>
+                  {contratos.length===0 ? <tr><td colSpan={4} style={{padding:24,textAlign:'center',color:'var(--ink-faint)'}}>Sin clientes presenciales asignados.</td></tr> : contratos.map(c=>{ const tot=sesionesPlan(c.planes?.nombre), h=consumidas(c.id), r=tot-h; return (
+                    <tr key={c.id}><td className="name">{c.clientes?.nombre}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{tot||'—'}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{h}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:r<=2?'var(--neg)':'var(--ink)'}}>{tot?r:'—'}{tot&&r<=2?' ⚠️':''}</td></tr>
+                  ); })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </>)}
+    </div>
+  );
+};
+
 const App = () => {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
@@ -4376,6 +4489,8 @@ const App = () => {
       case 'clientes-ent/etiquetas': return <EtiquetasClientes setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>;
       case 'delivery/clientes': return <DeliveryClientes setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>;
       case 'delivery/entregas': return <DeliveryEntregas/>;
+      case 'entrenador/clientes': return <EntrenadorClientes entrenadorId={perfil?.entrenador_id}/>;
+      case 'entrenador/sesiones': return <EntrenadorSesiones entrenadorId={perfil?.entrenador_id}/>;
       case 'equipo/entrenadores': return <EquipoTabla tipo="entrenadores"/>;
       case 'equipo/setters': return <EquipoTabla tipo="setters"/>;
       case 'equipo/closers': return <ComisionesClosers/>;
