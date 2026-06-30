@@ -817,6 +817,14 @@ const pagosMes = (pagos, y, m, canal) => (pagos || []).filter(p => {
 const sumPagosUsd = rows => (rows || []).reduce((s, p) => s + (p.monto_usd || 0) + (p.monto_eur || 0) * 1.08, 0);
 const sumPagosField = (rows, field) => (rows || []).reduce((s, p) => s + (p[field] || 0), 0);
 
+// === VALOR POR HORA (presencial) ===
+// El número entre paréntesis del plan = sesiones/mes (cada una 1 hora). Ej: "ENT. PERSONAL (16)" = 16h.
+const sesionesPlan = nombre => { const m = /\((\d+)\)/.exec(nombre || ''); return m ? parseInt(m[1], 10) : 0; };
+// €/hora que paga el cliente = precio ÷ sesiones.
+const precioHoraCliente = c => { const ses = sesionesPlan(c?.planes?.nombre); if (!ses) return null; return ((c.precio_eur || 0) + (c.precio_usd || 0)) / ses; };
+// €/hora que gana el dueño = (precio − pago al entrenador) ÷ sesiones.
+const gananciaHoraDueno = c => { const ses = sesionesPlan(c?.planes?.nombre); if (!ses) return null; const precio = (c.precio_eur || 0) + (c.precio_usd || 0); const pagoEnt = (c.pago_entrenador_eur || 0) + (c.pago_entrenador_usd || 0); return (precio - pagoEnt) / ses; };
+
 const MonthlyRevenueChart = ({ year }) => {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -922,9 +930,12 @@ const DashboardGeneral = () => {
   const toUSD = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
   // Facturación = suma de PAGOS REALES del mes (no la fecha de inicio del contrato).
   const factUsdCanal = canal => sumPagosUsd(pagosMes(pagos, year, month, canal));
-  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  // Gastos de personal por canal = lo que pagas a los entrenadores de los clientes activos de ese canal.
+  const personalCanal = canal => clientes.filter(c=>c.canal===canal && c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
+  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalCanal(canal);
   const factTotalUsd = factUsdCanal('ONLINE')+factUsdCanal('PRESENCIAL')+factUsdCanal('SKOOL');
-  const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  const personalTotal = clientes.filter(c=>c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
+  const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalTotal;
 
   // Pagos cobrados en el mes seleccionado (cada fila = un cobro real).
   const filtered = useMemo(() => pagosMes(pagos, year, month), [pagos, year, month]);
@@ -1253,6 +1264,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
                   <th>Setter</th>
                   <th>Pago</th>
                   <th style={{textAlign:'right'}}>Precio</th>
+                  <th style={{textAlign:'right'}}>€/hora</th>
                   <th>Inicio</th>
                   <th>Fin</th>
                   <th style={{textAlign:'right'}}>Estado</th>
@@ -1260,7 +1272,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={11} style={{padding:'40px', textAlign:'center', color:'var(--ink-faint)'}}>No hay clientes que coincidan.</td></tr>
+                  <tr><td colSpan={12} style={{padding:'40px', textAlign:'center', color:'var(--ink-faint)'}}>No hay clientes que coincidan.</td></tr>
                 ) : filtered.map(c=>{
                   const contrato = getContrato(c);
                   const dias = contrato ? daysUntil(contrato.fecha_fin) : null;
@@ -1282,6 +1294,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
                       <td style={{fontSize:12}}>{contrato?.setters?.nombre||'—'}</td>
                       <td style={{fontSize:12}}>{contrato?.metodo_pago||'—'}</td>
                       <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{precio}</td>
+                      <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{(()=>{ const ph = (contrato&&contrato.canal==='PRESENCIAL') ? precioHoraCliente(contrato) : null; return ph!=null ? (contrato.divisa_principal==='USD'?`$${Math.round(ph)}`:`${Math.round(ph)}€`) : '—'; })()}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_inicio||'—'}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_fin||'—'}</td>
                       <td style={{textAlign:'right'}}>
@@ -2635,7 +2648,7 @@ const NuevoCliente = ({ setRoute }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ nombre:'', pais:'', email:'', prefijo_telefono:'+34', telefono:'', objetivo:'', notas:'', direccion:'' });
-  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, closer_id:'', porcentaje_comision_closer:'', precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, metodo_pago:'Stripe', divisa_principal:'EUR', horas_semana:'', fecha_inicio:'', fecha_fin:'' });
+  const [ctrt, setCtrt] = useState({ plan_id:'', canal:'ONLINE', entrenador_id:'', setter_id:'', canal_cierre:'CHAT', porcentaje_comision_setter:10, closer_id:'', porcentaje_comision_closer:'', precio_eur:0, precio_usd:0, comision_banco_eur:0, comision_banco_usd:0, pago_entrenador:0, metodo_pago:'Stripe', divisa_principal:'EUR', horas_semana:'', fecha_inicio:'', fecha_fin:'' });
 
   useEffect(()=>{
     Promise.all([
@@ -2670,6 +2683,8 @@ const NuevoCliente = ({ setRoute }) => {
         canal_cierre:ctrt.canal_cierre, porcentaje_comision_setter:Number(ctrt.porcentaje_comision_setter)||null,
         precio_eur:Number(ctrt.precio_eur)||0, precio_usd:Number(ctrt.precio_usd)||0,
         comision_banco_eur:Number(ctrt.comision_banco_eur)||0, comision_banco_usd:Number(ctrt.comision_banco_usd)||0,
+        pago_entrenador_eur: ctrt.divisa_principal==='EUR' ? Number(ctrt.pago_entrenador)||0 : 0,
+        pago_entrenador_usd: ctrt.divisa_principal==='USD' ? Number(ctrt.pago_entrenador)||0 : 0,
         metodo_pago:ctrt.metodo_pago, divisa_principal:ctrt.divisa_principal,
         horas_semana:Number(ctrt.horas_semana)||null,
         fecha_inicio:ctrt.fecha_inicio, fecha_fin:ctrt.fecha_fin, estado:'activo',
@@ -2717,8 +2732,9 @@ const NuevoCliente = ({ setRoute }) => {
             ))}
           </div>
           {(ctrt.canal==='ONLINE'||ctrt.canal==='PRESENCIAL') && (
-            <div style={{marginTop:18,maxWidth:380}}>
-              <FS label="Entrenador asignado" val={ctrt.entrenador_id} onCh={v=>sc('entrenador_id',v)}><option value="">— Sin entrenador —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</FS>
+            <div style={{marginTop:18,display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,maxWidth:520}}>
+              <FS label="Entrenador asignado" val={ctrt.entrenador_id} onCh={v=>sc('entrenador_id',v)}><option value="">— Sin entrenador (lo entrenas tú) —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</FS>
+              {ctrt.entrenador_id && <FF label={`Pago al entrenador / mes (${ctrt.divisa_principal})`} val={ctrt.pago_entrenador} onCh={v=>sc('pago_entrenador',v)} type="number" placeholder="0"/>}
             </div>
           )}
         </div>
@@ -3845,7 +3861,7 @@ const MetricsPanel = () => {
   const [gastos, setGastos] = useState([]);
   const [editores, setEditores] = useState([]);
   useEffect(() => { (async () => {
-    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(duracion_meses)');
+    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,pago_entrenador_eur,pago_entrenador_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(nombre,duracion_meses)');
     setContratos(cs || []);
     const { data: ps } = await window._sb.from('pagos').select('monto_eur,monto_usd,fecha,canal');
     setPagos(ps || []);
@@ -3890,9 +3906,10 @@ const MetricsPanel = () => {
   const totGasto = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + edE * 1.08 + edU;
   // Valor por hora presencial: facturación presencial activa / horas presenciales al mes
   const presAct = contratos.filter(c => c.estado === 'activo' && c.canal === 'PRESENCIAL');
-  const horasMes = presAct.reduce((s, c) => s + (Number(c.horas_semana) || 0), 0) * 4.33;
-  const presIngreso = presAct.reduce((s, c) => s + (c.precio_eur || 0) + (c.precio_usd || 0), 0);
-  const valorHora = horasMes > 0 ? presIngreso / horasMes : 0;
+  // Sesiones/mes = nº del plan. Valor de tu hora = (lo que cobras − lo que pagas al entrenador) ÷ sesiones.
+  const sesMes = presAct.reduce((s, c) => s + sesionesPlan(c.planes?.nombre), 0);
+  const netoPres = presAct.reduce((s, c) => s + ((c.precio_eur || 0) + (c.precio_usd || 0)) - ((c.pago_entrenador_eur || 0) + (c.pago_entrenador_usd || 0)), 0);
+  const valorHora = sesMes > 0 ? netoPres / sesMes : 0;
 
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const last6 = [];
@@ -3933,8 +3950,8 @@ const MetricsPanel = () => {
       </div>
       <div className="mp-card">
         <div className="mp-label">Valor de tu hora (presencial)</div>
-        <div className="mp-value">{horasMes > 0 ? r0(valorHora) : '—'}<span className="u">/h</span></div>
-        <div className="mp-sub">{horasMes > 0 ? `${r0(horasMes)} h/mes presencial` : 'mete las horas en cada cliente'}</div>
+        <div className="mp-value">{sesMes > 0 ? r0(valorHora) : '—'}<span className="u">/h</span></div>
+        <div className="mp-sub">{sesMes > 0 ? `${sesMes} sesiones/mes · neto tras pagar entrenadores` : 'sin clientes presenciales activos'}</div>
       </div>
       <div className="mp-card mp-wide">
         <div className="mp-label">Por canal · {meses[mo]} (en $)</div>
