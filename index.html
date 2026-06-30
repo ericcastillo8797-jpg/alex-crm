@@ -448,6 +448,10 @@ const loadReglas = () => {
   return DEFAULT_REGLAS;
 };
 const saveReglas = (r) => { try { localStorage.setItem('etiquetas_reglas', JSON.stringify(r)); } catch(e){} };
+// Métodos de pago editables (lista global en localStorage).
+const DEFAULT_METODOS = ['Stripe','Zelle','Transferencia','Bizum','Cash','PayPal','Tarjeta','Skool Payment','Otro'];
+const loadMetodos = () => { try { const m = JSON.parse(localStorage.getItem('af_metodos')); if (Array.isArray(m) && m.length) return m; } catch(e){} return DEFAULT_METODOS; };
+const saveMetodos = (m) => { try { localStorage.setItem('af_metodos', JSON.stringify(m)); } catch(e){} };
 const contrastColor = (hex) => {
   if (!hex || hex[0] !== '#') return '#1a1a1a';
   const h = hex.length===4 ? '#'+hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3] : hex;
@@ -1193,6 +1197,16 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
   const [filter, setFilter] = useState('activos');
   const [canal, setCanal] = useState('todos');
   const [search, setSearch] = useState('');
+  const [metodos, setMetodos] = useState(loadMetodos());
+  const [showMet, setShowMet] = useState(false);
+  const [nuevoMet, setNuevoMet] = useState('');
+  const updateMetodo = async (cli, contrato, val) => {
+    if (!contrato?.id) return;
+    await window._sb.from('contratos').update({ metodo_pago: val }).eq('id', contrato.id);
+    setClientes(prev => prev.map(c => c.id===cli.id ? {...c, contratos:(c.contratos||[]).map(ct=>ct.id===contrato.id?{...ct,metodo_pago:val}:ct)} : c));
+  };
+  const addMet = () => { const v=nuevoMet.trim(); if(!v||metodos.includes(v))return; const l=[...metodos,v]; setMetodos(l); saveMetodos(l); setNuevoMet(''); };
+  const delMet = (m) => { const l=metodos.filter(x=>x!==m); setMetodos(l); saveMetodos(l); };
 
   useEffect(()=>{
     const fetch = async () => {
@@ -1245,8 +1259,28 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
           <input style={{padding:'8px 12px', background:'none', border:'none', outline:'none', fontSize:13, minWidth:160}} placeholder="Nombre…" value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
         <div className="filter-spacer"/>
+        <button className="ghost-btn" onClick={()=>setShowMet(true)}>Métodos de pago</button>
         <button className="ghost-btn" onClick={()=>setRoute('clientes/nuevo')}><Icon name="plus" size={13}/> Añadir cliente</button>
       </div>
+
+      {showMet && (
+        <ModalShell title="Métodos de" italic="pago" onClose={()=>setShowMet(false)} maxWidth={460}
+          footer={<button className="ghost-btn" onClick={()=>setShowMet(false)}>Cerrar</button>}>
+          <div style={{fontSize:13,color:'var(--ink-dim)',marginBottom:14}}>Añade o quita formas de pago. Aparecen en el desplegable de Pago de cada cliente y en alta/renovar.</div>
+          <div style={{display:'flex',gap:8,marginBottom:14}}>
+            <input value={nuevoMet} onChange={e=>setNuevoMet(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addMet()} placeholder="Nuevo método (ej. Revolut, Wise…)" style={{flex:1,padding:'9px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none'}}/>
+            <button onClick={addMet} style={{padding:'9px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:500,border:'none',cursor:'pointer'}}>Añadir</button>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {metodos.map(m=>(
+              <div key={m} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 12px',background:'var(--bg-1)',borderRadius:8}}>
+                <span style={{fontSize:13}}>{m}</span>
+                <button className="ghost-btn" style={{color:'var(--neg)',padding:'3px 8px'}} onClick={()=>delMet(m)}>✕</button>
+              </div>
+            ))}
+          </div>
+        </ModalShell>
+      )}
 
       <div className="panel">
         <div className="panel-head">
@@ -1294,7 +1328,13 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
                       <td style={{fontSize:12}}>{contrato?.planes?.nombre||'—'}</td>
                       <td style={{fontSize:12}}>{contrato?.entrenadores?.nombre||'—'}</td>
                       <td style={{fontSize:12}}>{contrato?.setters?.nombre||'—'}</td>
-                      <td style={{fontSize:12}}>{contrato?.metodo_pago||'—'}</td>
+                      <td style={{fontSize:12}} onClick={e=>e.stopPropagation()}>
+                        {contrato ? <select value={contrato.metodo_pago||''} onChange={e=>updateMetodo(c, contrato, e.target.value)} style={{padding:'4px 6px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:6,fontSize:12,fontFamily:'inherit',outline:'none',maxWidth:120}}>
+                          <option value="">—</option>
+                          {metodos.map(m=><option key={m}>{m}</option>)}
+                          {contrato.metodo_pago && !metodos.includes(contrato.metodo_pago) && <option value={contrato.metodo_pago}>{contrato.metodo_pago}</option>}
+                        </select> : '—'}
+                      </td>
                       <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{precio}</td>
                       <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{(()=>{ const ph = (contrato&&contrato.canal==='PRESENCIAL') ? precioHoraCliente(contrato) : null; return ph!=null ? (contrato.divisa_principal==='USD'?`$${Math.round(ph)}`:`${Math.round(ph)}€`) : '—'; })()}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_inicio||'—'}</td>
@@ -1586,7 +1626,8 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [infoMsg, setInfoMsg] = useState('');
   const [setters, setSetters] = useState([]);
   const [closers, setClosers] = useState([]);
-  const [venta, setVenta] = useState({ setter_id:'', closer_id:'' });
+  const [entrenadores, setEntrenadores] = useState([]);
+  const [venta, setVenta] = useState({ setter_id:'', closer_id:'', entrenador_id:'' });
   const [savingVenta, setSavingVenta] = useState(false);
   const [ventaMsg, setVentaMsg] = useState('');
   const [planes, setPlanes] = useState([]);
@@ -1598,6 +1639,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   useEffect(()=>{
     window._sb.from('setters').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setSetters(data||[]));
     window._sb.from('closers').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setClosers(data||[])).catch(()=>{});
+    window._sb.from('entrenadores').select('id,nombre,tipo').eq('activo',true).order('nombre').then(({data})=>setEntrenadores(data||[]));
     window._sb.from('planes').select('id,nombre,precio_eur,precio_usd,canal').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[]));
   },[]);
   const corregirPlan = async () => {
@@ -1631,12 +1673,12 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   }, [cliente]);
 
   useEffect(()=>{ loadContratos(); },[loadContratos]);
-  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'' }); setPlanSel(a?.plan_id||''); },[contratos]);
+  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'', entrenador_id:a?.entrenador_id||'' }); setPlanSel(a?.plan_id||''); },[contratos]);
   const guardarVenta = async () => {
     const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
     if (!a?.id) { setVentaMsg('Este cliente no tiene contrato.'); return; }
     setSavingVenta(true); setVentaMsg('');
-    const { error } = await window._sb.from('contratos').update({ setter_id:venta.setter_id||null, closer_id:venta.closer_id||null }).eq('id', a.id);
+    const { error } = await window._sb.from('contratos').update({ setter_id:venta.setter_id||null, closer_id:venta.closer_id||null, entrenador_id:venta.entrenador_id||null }).eq('id', a.id);
     setSavingVenta(false); setVentaMsg(error ? ('Error: '+error.message) : 'Guardado ✓'); if(!error) loadContratos();
   };
 
@@ -1651,6 +1693,13 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   );
 
   const contrato = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
+  const esActivo = contratos.some(c=>c.estado==='activo');
+  const reactivar = async () => {
+    const ult = contratos[contratos.length-1];
+    if (ult?.id) await window._sb.from('contratos').update({ estado:'activo' }).eq('id', ult.id);
+    await window._sb.from('clientes').update({ activo:true }).eq('id', cliente.id);
+    loadContratos(); onClienteUpdated?.();
+  };
 
   return (
     <>
@@ -1663,11 +1712,12 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
             <div style={{marginTop:10,display:'flex',gap:8,flexWrap:'wrap'}}>
               {cliente.pais && <span className="chip">{cliente.pais}</span>}
               {contrato && <span className={`chip ${contrato.canal?.toLowerCase()}`}>{contrato.canal}</span>}
-              <span className={`chip ${cliente.activo?'activo':'inactivo'}`}>{cliente.activo?'Activo':'Inactivo'}</span>
+              <span className={`chip ${esActivo?'activo':'inactivo'}`}>{esActivo?'Activo':'Inactivo'}</span>
               {contrato?.canal==='PRESENCIAL' && sesionesPlan(contrato?.planes?.nombre)>0 && (()=>{ const tot=sesionesPlan(contrato.planes.nombre), rest=tot-sesHechas; return <span className="chip" style={{background:rest<=2?'#fbeee8':undefined,color:rest<=2?'#b04425':undefined}}>Sesiones: {sesHechas}/{tot} · quedan {rest}</span>; })()}
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            {!esActivo && <button className="ghost-btn" onClick={reactivar} style={{color:'#2f7a44',borderColor:'#b6e0c4',fontWeight:600}}>↺ Reactivar cliente</button>}
             <button className="ghost-btn" onClick={()=>setRoute?.('clientes/renovar')}>Renovar contrato</button>
             <button className="ghost-btn" onClick={()=>setRoute?.('clientes/upgrade')}>Upgrade plan</button>
             <button className="ghost-btn" onClick={()=>setModal('alargar')}>Alargar fecha</button>
@@ -1729,6 +1779,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
                   <FS label="Setter (quién lo trajo)" val={venta.setter_id} onCh={v=>setVenta(f=>({...f,setter_id:v}))}><option value="">— Ninguno —</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS>
                   <FS label="Closer (quién cerró la venta)" val={venta.closer_id} onCh={v=>setVenta(f=>({...f,closer_id:v}))}><option value="">— Ninguno —</option>{closers.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</FS>
+                  <div style={{gridColumn:'1 / -1'}}><FS label="Entrenador asignado" val={venta.entrenador_id} onCh={v=>setVenta(f=>({...f,entrenador_id:v}))}><option value="">— Ninguno (lo entrenas tú) —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre} ({e.tipo||'online'})</option>)}</FS></div>
                 </div>
                 <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Se suma a las comisiones del setter y del closer correspondiente.</div>
                 {ventaMsg && <div style={{marginTop:12,fontSize:13,color:ventaMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{ventaMsg}</div>}
@@ -2853,7 +2904,7 @@ const NuevoCliente = ({ setRoute }) => {
       <div className="panel">
         <div className="panel-head"><h2 className="panel-title">Pago <span className="italic">y cierre</span></h2></div>
         <div className="panel-body"><div style={g4}>
-          <div style={sp2}><FS label="Método de pago" val={ctrt.metodo_pago} onCh={v=>sc('metodo_pago',v)}>{['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}</FS></div>
+          <div style={sp2}><FS label="Método de pago" val={ctrt.metodo_pago} onCh={v=>sc('metodo_pago',v)}>{loadMetodos().map(m=><option key={m}>{m}</option>)}</FS></div>
           <div style={sp2}><FS label="Canal de cierre" val={ctrt.canal_cierre} onCh={v=>sc('canal_cierre',v)}><option value="CHAT">CHAT</option><option value="LLAMADA">LLAMADA</option><option value="OTRO">Evaluación presencial</option></FS></div>
           <div style={sp2}><FS label="Setter" val={ctrt.setter_id} onCh={v=>sc('setter_id',v)}><option value="">— Sin setter</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS></div>
           <FF label="% Comisión setter" val={ctrt.porcentaje_comision_setter} onCh={v=>sc('porcentaje_comision_setter',v)} type="number" placeholder="10"/>
@@ -2993,7 +3044,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved, asPage }) => 
         <FF label={`Precio (${form.divisa})`} val={form.precio} onCh={v=>sf('precio',v)} type="number"/>
         <FF label={`Comisión banco (${form.divisa})`} val={form.comision} onCh={v=>sf('comision',v)} type="number"/>
         <FS label="Método de pago" val={form.metodo_pago} onCh={v=>sf('metodo_pago',v)}>
-          {['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}
+          {loadMetodos().map(m=><option key={m}>{m}</option>)}
         </FS>
         <FF label="Fecha inicio" val={form.fecha_inicio} onCh={v=>sf('fecha_inicio',v)} type="date"/>
         <FF label="Fecha fin" val={form.fecha_fin} onCh={v=>sf('fecha_fin',v)} type="date"/>
@@ -4118,7 +4169,9 @@ const SesionesPresenciales = () => {
     if (!form.contrato_id) return;
     setSaving(true);
     const c = contratos.find(x=>x.id===form.contrato_id);
-    await window._sb.from('sesiones').insert({ cliente_id:c?.cliente_id, contrato_id:form.contrato_id, entrenador_id:form.entrenador_id||c?.entrenador_id||null, fecha:form.fecha, cantidad:Number(form.cantidad)||0, pago_usd:Number(form.pago_usd)||0, nota:form.nota||null });
+    const cant = Number(form.cantidad)||0;
+    const pago = (c?.pago_entrenador_usd||0) * cant;   // se calcula solo con la tarifa por sesión
+    await window._sb.from('sesiones').insert({ cliente_id:c?.cliente_id, contrato_id:form.contrato_id, entrenador_id:form.entrenador_id||c?.entrenador_id||null, fecha:form.fecha, cantidad:cant, pago_usd:pago, nota:form.nota||null });
     setSaving(false); setForm({ contrato_id:'', entrenador_id:'', fecha:HOY_STR(), cantidad:1, pago_usd:0, nota:'' }); load();
   };
   const borrar = async id => { if(!confirm('¿Eliminar este registro de sesiones?')) return; await window._sb.from('sesiones').delete().eq('id',id); load(); };
@@ -4147,15 +4200,14 @@ const SesionesPresenciales = () => {
         <div className="panel">
           <div className="panel-head"><h2 className="panel-title">Registrar <span className="italic">parte de sesiones</span></h2></div>
           <div className="panel-body">
-            <div style={{display:'grid',gridTemplateColumns:'2fr 1.4fr 1fr 0.8fr 1fr auto',gap:12,alignItems:'end'}}>
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1.4fr 1fr 0.8fr auto',gap:12,alignItems:'end'}}>
               <div><FLbl t="Cliente"/><select value={form.contrato_id} onChange={e=>onContrato(e.target.value)} style={IS}><option value="">— Cliente —</option>{contratos.map(c=><option key={c.id} value={c.id}>{c.clientes?.nombre} · {c.planes?.nombre}</option>)}</select></div>
               <div><FLbl t="Entrenador"/><select value={form.entrenador_id} onChange={e=>sf('entrenador_id',e.target.value)} style={IS}><option value="">—</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</select></div>
               <div><FLbl t="Fecha"/><input type="date" value={form.fecha} onChange={e=>sf('fecha',e.target.value)} style={IS}/></div>
-              <div><FLbl t="Sesiones"/><input type="number" value={form.cantidad} onChange={e=>onCantidad(e.target.value)} style={IS}/></div>
-              <div><FLbl t="Pago $"/><input type="number" value={form.pago_usd} onChange={e=>sf('pago_usd',e.target.value)} style={IS}/></div>
+              <div><FLbl t="Sesiones hechas"/><input type="number" value={form.cantidad} onChange={e=>sf('cantidad',e.target.value)} style={IS}/></div>
               <button onClick={guardar} disabled={saving||!form.contrato_id} style={{padding:'10px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:600,border:'none',cursor:'pointer',height:38}}>{saving?'…':'Registrar'}</button>
             </div>
-            {contratoSel?.pago_entrenador_usd>0 && <div style={{marginTop:8,fontSize:12,color:'var(--ink-faint)'}}>Tarifa de este cliente: ${contratoSel.pago_entrenador_usd}/sesión · el pago se calcula solo.</div>}
+            <div style={{marginTop:8,fontSize:12,color:'var(--ink-faint)'}}>Solo registras las sesiones hechas (se descuentan del plan). El pago a Adrián se calcula solo con la tarifa por sesión del cliente y se acumula para pagarlo a fin de mes.</div>
           </div>
         </div>
 
