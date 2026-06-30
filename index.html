@@ -2026,26 +2026,30 @@ const DeliveryClientes = ({ setRoute, setSelectedCliente }) => {
 
 // ─── ECONOMÍA / FACTURACIÓN ──────────────────────────────────────────────────
 const EconomiaFacturacion = () => {
-  const [contratos, setContratos] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(new Date().getMonth());
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{
     const load = async () => {
       setLoading(true);
-      const { data } = await window._sb.from('contratos')
-        .select('canal, precio_eur, precio_usd, divisa_principal, fecha_inicio, metodo_pago, clientes(nombre), planes(nombre)')
-        .order('fecha_inicio');
-      setContratos(data||[]);
+      const { data } = await window._sb.from('pagos')
+        .select('canal, monto_eur, monto_usd, fecha, concepto, clientes(nombre)')
+        .order('fecha', { ascending: false });
+      setPagos(data||[]);
       setLoading(false);
     };
     load();
   },[]);
 
-  const filtered = contratos.filter(c => new Date(c.fecha_inicio).getFullYear() === year);
+  // Facturación = PAGOS REALES (lo cobrado), no la fecha de inicio del contrato.
+  const enAnio = p => p.fecha && new Date(p.fecha+'T00:00:00').getFullYear() === year;
+  const filtered = pagos.filter(enAnio);
+  const mesDe = p => new Date(p.fecha+'T00:00:00').getMonth();
 
   const byMonth = Array.from({length:12},(_,i)=>{
-    const mes = filtered.filter(c => new Date(c.fecha_inicio).getMonth() === i);
+    const mes = filtered.filter(p => mesDe(p) === i);
     return {
       mes: i,
       online: mes.filter(c=>c.canal==='ONLINE'),
@@ -2054,11 +2058,14 @@ const EconomiaFacturacion = () => {
     };
   }).filter(m => m.online.length+m.presencial.length+m.skool.length > 0);
 
-  const sumEur = arr => arr.reduce((s,c)=>s+(c.precio_eur||0),0);
-  const sumUsd = arr => arr.reduce((s,c)=>s+(c.precio_usd||0),0);
+  const sumEur = arr => arr.reduce((s,c)=>s+(c.monto_eur||0),0);
+  const sumUsd = arr => arr.reduce((s,c)=>s+(c.monto_usd||0),0);
 
-  const totalEur = sumEur(filtered);
-  const totalUsd = sumUsd(filtered);
+  // Pagos del MES seleccionado (los KPIs y el listado son de ese mes).
+  const mesPagos = filtered.filter(p => mesDe(p) === month);
+  const totalEur = sumEur(mesPagos);
+  const totalUsd = sumUsd(mesPagos);
+  const etq = `${MONTHS_LONG[month]} ${year}`;
 
   return (
     <div className="page">
@@ -2068,7 +2075,9 @@ const EconomiaFacturacion = () => {
           <h1 className="page-title">Facturación <span className="italic">por mes</span></h1>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <span style={{fontSize:12,color:'var(--ink-faint)'}}>Año</span>
+          <select value={month} onChange={e=>setMonth(+e.target.value)} style={{padding:'6px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:13}}>
+            {MONTHS_LONG.map((m,i)=><option key={i} value={i}>{m}</option>)}
+          </select>
           <select value={year} onChange={e=>setYear(+e.target.value)} style={{padding:'6px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:13}}>
             {[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}
           </select>
@@ -2076,17 +2085,17 @@ const EconomiaFacturacion = () => {
       </div>
 
       <div className="kpi-grid">
-        <KpiCard label="Total EUR" value={fmt(totalEur)} unit="" icon="money" sub={`${year} · contratos en €`}/>
-        <KpiCard label="Total USD" value={`$${Math.round(totalUsd)}`} unit="" icon="money" sub={`${year} · contratos en $`}/>
-        <KpiCard label="Nuevos contratos" value={filtered.length} unit="" icon="users" sub={`${year}`}/>
-        <KpiCard label="Ticket medio" value={filtered.length ? fmt((totalEur + totalUsd*0.92)/filtered.length) : '—'} unit="" icon="up" sub="Convertido a EUR"/>
+        <KpiCard label="Facturación EUR" value={fmt(totalEur)} unit="" icon="money" sub={`Cobrado en ${etq}`}/>
+        <KpiCard label="Facturación USD" value={`$${Math.round(totalUsd)}`} unit="" icon="money" sub={`Cobrado en ${etq}`}/>
+        <KpiCard label="Nº pagos" value={mesPagos.length} unit="" icon="users" sub={etq}/>
+        <KpiCard label="Pago medio" value={mesPagos.length ? fmt((totalEur + totalUsd*0.92)/mesPagos.length) : '—'} unit="" icon="up" sub="Convertido a EUR"/>
       </div>
 
       <div className="panel">
         <div className="panel-head"><h2 className="panel-title">Desglose <span className="italic">mensual</span></h2></div>
         <div className="table-wrap">
           {loading ? <div className="loading">Cargando…</div> : byMonth.length === 0 ? (
-            <div style={{padding:'40px',textAlign:'center',color:'var(--ink-faint)'}}>Sin contratos en {year}</div>
+            <div style={{padding:'40px',textAlign:'center',color:'var(--ink-faint)'}}>Sin pagos en {year}</div>
           ) : (
             <table className="data-table">
               <thead>
@@ -2096,7 +2105,7 @@ const EconomiaFacturacion = () => {
                   <th style={{textAlign:'right'}}>Online $</th>
                   <th style={{textAlign:'right'}}>Presencial $</th>
                   <th style={{textAlign:'right'}}>Skool $</th>
-                  <th style={{textAlign:'right'}}>Clientes</th>
+                  <th style={{textAlign:'right'}}>Pagos</th>
                 </tr>
               </thead>
               <tbody>
@@ -2117,23 +2126,22 @@ const EconomiaFacturacion = () => {
       </div>
 
       <div className="panel">
-        <div className="panel-head"><h2 className="panel-title">Todos los <span className="italic">contratos</span></h2><span className="panel-sub">{year}</span></div>
+        <div className="panel-head"><h2 className="panel-title">Pagos de <span className="italic">{MONTHS_LONG[month]}</span></h2><span className="panel-sub">{etq} · {mesPagos.length} pagos</span></div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Cliente</th><th>Plan</th><th>Canal</th><th>Método pago</th><th>Fecha inicio</th><th style={{textAlign:'right'}}>€</th><th style={{textAlign:'right'}}>$</th></tr>
+              <tr><th>Cliente</th><th>Concepto</th><th>Canal</th><th>Fecha</th><th style={{textAlign:'right'}}>€</th><th style={{textAlign:'right'}}>$</th></tr>
             </thead>
             <tbody>
-              {filtered.length===0 ? <tr><td colSpan={7} style={{padding:'32px',textAlign:'center',color:'var(--ink-faint)'}}>Sin datos</td></tr>
-              : filtered.map((c,i)=>(
+              {mesPagos.length===0 ? <tr><td colSpan={6} style={{padding:'32px',textAlign:'center',color:'var(--ink-faint)'}}>Sin pagos en {etq}</td></tr>
+              : mesPagos.map((c,i)=>(
                 <tr key={i}>
                   <td style={{fontWeight:500}}>{c.clientes?.nombre||'—'}</td>
-                  <td style={{fontSize:12}}>{c.planes?.nombre||'—'}</td>
+                  <td style={{fontSize:12}}>{c.concepto||'—'}</td>
                   <td><span className={`chip ${c.canal?.toLowerCase()}`}>{c.canal}</span></td>
-                  <td style={{fontSize:12}}>{c.metodo_pago||'—'}</td>
-                  <td className="date">{c.fecha_inicio}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{c.precio_eur>0?fmt(c.precio_eur):'—'}</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{c.precio_usd>0?`$${c.precio_usd}`:'—'}</td>
+                  <td className="date">{c.fecha}</td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{c.monto_eur>0?fmt(c.monto_eur):'—'}</td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{c.monto_usd>0?`$${c.monto_usd}`:'—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -2435,6 +2443,56 @@ const EconomiaGastos = () => {
 
   const canalClass = c => ({ONLINE:'online', PRESENCIAL:'presencial', SKOOL:'skool', GENERAL:''}[c]||'');
 
+  const panelGastos = (canal, titulo) => {
+    const lista = gastosFijos.filter(g => g.canal === canal);
+    return (
+      <div className="panel">
+        <div className="panel-head">
+          <h2 className="panel-title">{titulo}</h2>
+          <button className="ghost-btn" onClick={()=>setEditGasto({concepto:'',canal,frecuencia:'MENSUAL',metodo_pago:'',importe_eur:0,importe_usd:0})}><Icon name="plus" size={13}/> Añadir gasto</button>
+        </div>
+        <div className="table-wrap">
+          {loading ? <div className="loading">Cargando…</div> : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th>Frecuencia</th>
+                  <th>Método pago</th>
+                  <th style={{textAlign:'right'}}>Importe €</th>
+                  <th style={{textAlign:'right'}}>Importe $</th>
+                  <th style={{textAlign:'right'}}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.length===0 ? <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'var(--ink-faint)'}}>Sin gastos en este canal.</td></tr> : lista.map(g => (
+                  <tr key={g.id}>
+                    <td style={{fontWeight:500}}>{g.concepto}</td>
+                    <td style={{color:'var(--ink-faint)',fontSize:12}}>{g.frecuencia}</td>
+                    <td style={{color:'var(--ink-faint)',fontSize:12}}>{g.metodo_pago||'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{g.importe_eur>0?`${g.importe_eur.toFixed(2)}€`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{g.importe_usd>0?`$${g.importe_usd.toFixed(2)}`:'—'}</td>
+                    <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+                      <button className="ghost-btn" style={{padding:'4px 8px',marginRight:4}} onClick={()=>setEditGasto({...g})}>Editar</button>
+                      <button className="ghost-btn" style={{padding:'4px 8px'}} onClick={()=>deleteGasto(g)}>Borrar</button>
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{borderTop:'2px solid var(--line)',background:'#faf8f4'}}>
+                  <td style={{fontWeight:700}}>TOTAL</td>
+                  <td></td><td></td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{lista.reduce((s,g)=>s+(g.importe_eur||0),0).toFixed(2)}€</td>
+                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>${lista.reduce((s,g)=>s+(g.importe_usd||0),0).toFixed(2)}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -2457,52 +2515,10 @@ const EconomiaGastos = () => {
         <KpiCard label="Skool acumulado" value={`$${sumGastosSkoolUsd.toFixed(0)}`} unit="" icon="team" sub={`Gastos skool ${year}`}/>
       </div>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h2 className="panel-title">Gastos <span className="italic">fijos</span></h2>
-          <button className="ghost-btn" onClick={()=>setEditGasto({concepto:'',canal:'ONLINE',frecuencia:'MENSUAL',metodo_pago:'',importe_eur:0,importe_usd:0})}><Icon name="plus" size={13}/> Añadir gasto</button>
-        </div>
-        <div className="table-wrap">
-          {loading ? <div className="loading">Cargando…</div> : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Concepto</th>
-                  <th>Canal</th>
-                  <th>Frecuencia</th>
-                  <th>Método pago</th>
-                  <th style={{textAlign:'right'}}>Importe €</th>
-                  <th style={{textAlign:'right'}}>Importe $</th>
-                  <th style={{textAlign:'right'}}>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gastosFijos.map(g => (
-                  <tr key={g.id}>
-                    <td style={{fontWeight:500}}>{g.concepto}</td>
-                    <td><span className={`tag ${canalClass(g.canal)}`}>{g.canal}</span></td>
-                    <td style={{color:'var(--ink-faint)',fontSize:12}}>{g.frecuencia}</td>
-                    <td style={{color:'var(--ink-faint)',fontSize:12}}>{g.metodo_pago||'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{g.importe_eur>0?`${g.importe_eur.toFixed(2)}€`:'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{g.importe_usd>0?`$${g.importe_usd.toFixed(2)}`:'—'}</td>
-                    <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
-                      <button className="ghost-btn" style={{padding:'4px 8px',marginRight:4}} onClick={()=>setEditGasto({...g})}>Editar</button>
-                      <button className="ghost-btn" style={{padding:'4px 8px'}} onClick={()=>deleteGasto(g)}>Borrar</button>
-                    </td>
-                  </tr>
-                ))}
-                <tr style={{borderTop:'2px solid var(--line)',background:'#faf8f4'}}>
-                  <td style={{fontWeight:700}}>TOTAL</td>
-                  <td></td><td></td><td></td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>{gastosFijos.reduce((s,g)=>s+(g.importe_eur||0),0).toFixed(2)}€</td>
-                  <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:700}}>${gastosFijos.reduce((s,g)=>s+(g.importe_usd||0),0).toFixed(2)}</td>
-                  <td></td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      {panelGastos('ONLINE', <>Gastos <span className="italic">online</span></>)}
+      {panelGastos('PRESENCIAL', <>Gastos <span className="italic">presenciales</span></>)}
+      {gastosFijos.some(g=>g.canal==='SKOOL') && panelGastos('SKOOL', <>Gastos <span className="italic">Skool</span></>)}
+      {gastosFijos.some(g=>g.canal==='GENERAL') && panelGastos('GENERAL', <>Gastos <span className="italic">generales</span></>)}
 
       <div className="panel">
         <div className="panel-head">
