@@ -3967,7 +3967,8 @@ const App = () => {
   const [perfil, setPerfil] = useState(null);
   const [route, setRoute] = useState(()=>localStorage.getItem('af_route')||'dashboard/general');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [selectedCliente, setSelectedCliente] = useState(null);
+  const [selectedCliente, setSelectedCliente] = useState(()=>{ try { return JSON.parse(localStorage.getItem('af_cli')||'null'); } catch(e) { return null; } });
+  useEffect(()=>{ try { localStorage.setItem('af_cli', JSON.stringify(selectedCliente)); } catch(e){} },[selectedCliente]);
   const [panelOpen, setPanelOpen] = useState(()=>localStorage.getItem('af_panel')!=='0');
   const togglePanel = () => setPanelOpen(o=>{ const n=!o; localStorage.setItem('af_panel', n?'1':'0'); return n; });
 
@@ -3983,21 +3984,28 @@ const App = () => {
         }
       }
       setPerfil(data);
-      if (data) {
+      // Corregir la ruta SOLO la primera vez (al entrar). En refrescos de token
+      // (al volver a la pestaña) NO se toca la ruta, para no sacar al usuario de donde está.
+      if (data && !routeCorrected) {
+        routeCorrected = true;
         const allowed = getNavForRole(data.rol).flatMap(g => g.items.map(i => i.id));
-        setRoute(cur => allowed.includes(cur) ? cur : (getNavForRole(data.rol)[0]?.items[0]?.id || 'delivery/clientes'));
+        const keep = cur => allowed.includes(cur) || cur.startsWith('clientes/') || cur.startsWith('clientes-ent/');
+        setRoute(cur => keep(cur) ? cur : (getNavForRole(data.rol)[0]?.items[0]?.id || 'delivery/clientes'));
       }
     };
 
+    let routeCorrected = false;
     window._sb.auth.getSession().then(({data:{session}})=>{
       const u = session?.user||null;
       setUser(u);
       if (u) loadPerfil(u);
       setChecking(false);
     });
-    const { data: { subscription } } = window._sb.auth.onAuthStateChange((_,session)=>{
+    const { data: { subscription } } = window._sb.auth.onAuthStateChange((event,session)=>{
+      // Ignorar refrescos de token (no cambian quién eres, solo renuevan la sesión).
+      if (event === 'TOKEN_REFRESHED') return;
       const u = session?.user||null;
-      setUser(u);
+      setUser(prev => prev?.id === u?.id ? prev : u);
       if (u) loadPerfil(u);
       else setPerfil(null);
     });
