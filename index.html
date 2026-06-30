@@ -2067,6 +2067,11 @@ const EconomiaFacturacion = () => {
   const totalUsd = sumUsd(mesPagos);
   const etq = `${MONTHS_LONG[month]} ${year}`;
 
+  // Resumen anual de TODOS los años (todos los pagos).
+  const aniosMap = {};
+  pagos.forEach(p => { const a = p.fecha ? new Date(p.fecha+'T00:00:00').getFullYear() : null; if(!a) return; (aniosMap[a] = aniosMap[a] || {eur:0,usd:0,n:0}); aniosMap[a].eur += p.monto_eur||0; aniosMap[a].usd += p.monto_usd||0; aniosMap[a].n++; });
+  const anios = Object.keys(aniosMap).map(Number).sort((a,b)=>b-a);
+
   return (
     <div className="page">
       <div className="page-header">
@@ -2119,6 +2124,28 @@ const EconomiaFacturacion = () => {
                     <td style={{textAlign:'right'}}>{m.online.length+m.presencial.length+m.skool.length}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head"><h2 className="panel-title">Facturación <span className="italic">anual</span></h2><span className="panel-sub">Todos los años</span></div>
+        <div className="table-wrap">
+          {anios.length === 0 ? <div style={{padding:'24px',textAlign:'center',color:'var(--ink-faint)'}}>Sin datos.</div> : (
+            <table className="data-table">
+              <thead><tr><th>Año</th><th style={{textAlign:'right'}}>EUR</th><th style={{textAlign:'right'}}>USD</th><th style={{textAlign:'right'}}>Total ($)</th><th style={{textAlign:'right'}}>Pagos</th></tr></thead>
+              <tbody>
+                {anios.map(a=>{ const d=aniosMap[a]; return (
+                  <tr key={a} onClick={()=>setYear(a)} style={{cursor:'pointer',background:a===year?'var(--bg-1)':undefined}}>
+                    <td style={{fontWeight:600}}>{a}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.eur>0?fmt(d.eur):'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.usd>0?`$${Math.round(d.usd)}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--pos)'}}>${Math.round(d.usd + d.eur*1.08)}</td>
+                    <td style={{textAlign:'right'}}>{d.n}</td>
+                  </tr>
+                ); })}
               </tbody>
             </table>
           )}
