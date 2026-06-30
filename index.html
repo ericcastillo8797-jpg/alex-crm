@@ -472,6 +472,7 @@ const NAV = [
     {id:'dashboard/skool', label:'Skool'},
     {id:'clientes/lista', label:'Mis clientes'},
     {id:'clientes/vencimientos', label:'Vencimientos próximos'},
+    {id:'clientes/sesiones', label:'Sesiones presenciales'},
     {id:'clientes/etiquetas', label:'Etiquetas'},
     {id:'economia/facturacion', label:'Facturación'},
     {id:'economia/gastos', label:'Gastos'},
@@ -630,32 +631,26 @@ const Sidebar = ({ route, setRoute, mobileOpen, setMobileOpen, user, onLogout, p
 
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
 // ─── ACCIONES RÁPIDAS (fijas arriba a la derecha, en cualquier menú) ───────────
-const QuickActions = ({ setRoute }) => {
-  const [modal, setModal] = useState(null);   // 'renovar' | 'upgrade' | 'baja'
+const QuickActions = ({ setRoute, setSelectedCliente }) => {
   const acts = [
-    { id: 'alta', label: '+ Nuevo cliente', color: 'var(--ink)' },
-    { id: 'renovar', label: 'Renovar', color: '#b07a2a' },
-    { id: 'upgrade', label: 'Upgrade', color: '#c9a227' },
-    { id: 'baja', label: 'Baja', color: '#b04425' },
+    { id: 'clientes/nuevo', label: '+ Nuevo cliente', color: 'var(--ink)' },
+    { id: 'clientes/renovar', label: 'Renovar', color: '#b07a2a' },
+    { id: 'clientes/upgrade', label: 'Upgrade', color: '#c9a227' },
+    { id: 'clientes/baja', label: 'Baja', color: '#b04425' },
   ];
   return (
-    <>
-      <div className="quick-actions">
-        {acts.map(a => (
-          <button key={a.id} className="qa-btn" style={{ background: a.color }}
-            onClick={() => a.id === 'alta' ? setRoute('clientes/nuevo') : setModal(a.id)}>
-            {a.label}
-          </button>
-        ))}
-      </div>
-      {modal === 'renovar' && <RenovarModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
-      {modal === 'upgrade' && <UpgradeModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
-      {modal === 'baja' && <BajaModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
-    </>
+    <div className="quick-actions">
+      {acts.map(a => (
+        <button key={a.id} className="qa-btn" style={{ background: a.color }}
+          onClick={() => { setSelectedCliente?.(null); setRoute(a.id); }}>
+          {a.label}
+        </button>
+      ))}
+    </div>
   );
 };
 
-const Topbar = ({ route, onMenu, setRoute, showActions }) => {
+const Topbar = ({ route, onMenu, setRoute, showActions, setSelectedCliente }) => {
   const navGroup = NAV.find(n=>n.items.some(i=>i.id===route));
   const groupLabel = navGroup?.label || route.split('/')[0];
   const subLabel = navGroup?.items.find(i=>i.id===route)?.label;
@@ -666,7 +661,7 @@ const Topbar = ({ route, onMenu, setRoute, showActions }) => {
         <span>{groupLabel}</span>
         {subLabel && <><span className="sep">/</span><span className="current">{subLabel}</span></>}
       </div>
-      {showActions && <QuickActions setRoute={setRoute}/>}
+      {showActions && <QuickActions setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>}
     </header>
   );
 };
@@ -693,8 +688,8 @@ const KpiCard = ({ label, value, unit, sub, icon, neg }) => (
 );
 
 // ─── DUAL KPI CARD ────────────────────────────────────────────────────────────
-const FinanceCard = ({ label, fact, gasto, count }) => {
-  const benef = fact - gasto;
+const FinanceCard = ({ label, fact, gasto, personal=0, count }) => {
+  const benef = fact - gasto - personal;
   const row = (t, v, col) => <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span style={{ color: 'var(--ink-faint)' }}>{t}</span><b style={{ fontFamily: 'var(--font-mono)', color: col || 'var(--ink)' }}>${Math.round(v)}</b></div>;
   return (
     <div className="kpi">
@@ -702,7 +697,8 @@ const FinanceCard = ({ label, fact, gasto, count }) => {
         <div className="kpi-label"><span>{label}</span></div>
         <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 7 }}>
           {row('Facturación', fact)}
-          {row('Gastos', gasto)}
+          {row('Gastos negocio', gasto)}
+          {row('Gastos personal', personal)}
           <div style={{ paddingTop: 7, borderTop: '1px solid var(--line)' }}>{row('Beneficio', benef, benef < 0 ? 'var(--neg)' : 'var(--pos)')}</div>
         </div>
       </div>
@@ -824,7 +820,7 @@ const sesionesPlan = nombre => { const m = /\((\d+)\)/.exec(nombre || ''); retur
 // €/hora que paga el cliente = precio ÷ sesiones.
 const precioHoraCliente = c => { const ses = sesionesPlan(c?.planes?.nombre); if (!ses) return null; return ((c.precio_eur || 0) + (c.precio_usd || 0)) / ses; };
 // €/hora que gana el dueño = (precio − pago al entrenador) ÷ sesiones.
-const gananciaHoraDueno = c => { const ses = sesionesPlan(c?.planes?.nombre); if (!ses) return null; const precio = (c.precio_eur || 0) + (c.precio_usd || 0); const pagoEnt = (c.pago_entrenador_eur || 0) + (c.pago_entrenador_usd || 0); return (precio - pagoEnt) / ses; };
+const gananciaHoraDueno = c => { const ses = sesionesPlan(c?.planes?.nombre); if (!ses) return null; const precio = (c.precio_eur || 0) + (c.precio_usd || 0); const porSes = c.pago_entrenador_usd || 0; return precio / ses - porSes; };
 
 const MonthlyRevenueChart = ({ year }) => {
   const canvasRef = useRef(null);
@@ -932,13 +928,16 @@ const DashboardGeneral = () => {
   // Facturación = suma de PAGOS REALES del mes (no la fecha de inicio del contrato).
   const factUsdCanal = canal => sumPagosUsd(pagosMes(pagos, year, month, canal));
   // Gastos de personal por canal = lo que pagas a los entrenadores de los clientes activos de ese canal.
-  const personalCanal = canal => clientes.filter(c=>c.canal===canal && c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
+  const personalCanal = canal => clientes.filter(c=>c.canal===canal && c.estado==='activo').reduce((s,c)=>s+(c.pago_entrenador_usd||0)*sesionesPlan(c.planes?.nombre),0);
   // Gastos del panel "Personal" imputados a este canal (Adrián→presencial; Daniel/Martín/setter/closer→online).
   const personalFijoCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal==='PERSONAL'&&g.imputa_canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
-  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalCanal(canal) + personalFijoCanal(canal);
+  // Gastos de NEGOCIO del canal (sin personal) y gastos de PERSONAL del canal (separados).
+  const gastoNegocioCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  const personalTotalCanal = canal => personalCanal(canal) + personalFijoCanal(canal);
   const factTotalUsd = factUsdCanal('ONLINE')+factUsdCanal('PRESENCIAL')+factUsdCanal('SKOOL');
-  const personalTotal = clientes.filter(c=>c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
-  const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalTotal;
+  const gastoNegocioTotal = gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal!=='PERSONAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  const personalTotal = clientes.filter(c=>c.estado==='activo').reduce((s,c)=>s+(c.pago_entrenador_usd||0)*sesionesPlan(c.planes?.nombre),0)
+    + gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal==='PERSONAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
 
   // Pagos cobrados en el mes seleccionado (cada fila = un cobro real).
   const filtered = useMemo(() => pagosMes(pagos, year, month), [pagos, year, month]);
@@ -986,10 +985,10 @@ const DashboardGeneral = () => {
       </div>
 
       <div className="kpi-grid">
-        <FinanceCard label="Online" fact={factUsdCanal('ONLINE')} gasto={gastoUsdCanal('ONLINE')} count={activeOnline}/>
-        <FinanceCard label="Presencial" fact={factUsdCanal('PRESENCIAL')} gasto={gastoUsdCanal('PRESENCIAL')} count={activePresencial}/>
-        <FinanceCard label="Skool" fact={factUsdCanal('SKOOL')} gasto={gastoUsdCanal('SKOOL')} count={activeSkool}/>
-        <FinanceCard label="Total" fact={factTotalUsd} gasto={gastoTotalUsd} count={activeOnline+activePresencial+activeSkool}/>
+        <FinanceCard label="Online" fact={factUsdCanal('ONLINE')} gasto={gastoNegocioCanal('ONLINE')} personal={personalTotalCanal('ONLINE')} count={activeOnline}/>
+        <FinanceCard label="Presencial" fact={factUsdCanal('PRESENCIAL')} gasto={gastoNegocioCanal('PRESENCIAL')} personal={personalTotalCanal('PRESENCIAL')} count={activePresencial}/>
+        <FinanceCard label="Skool" fact={factUsdCanal('SKOOL')} gasto={gastoNegocioCanal('SKOOL')} personal={personalTotalCanal('SKOOL')} count={activeSkool}/>
+        <FinanceCard label="Total" fact={factTotalUsd} gasto={gastoNegocioTotal} personal={personalTotal} count={activeOnline+activePresencial+activeSkool}/>
       </div>
 
       <MonthlyRevenueChart year={year}/>
@@ -1590,10 +1589,28 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [venta, setVenta] = useState({ setter_id:'', closer_id:'' });
   const [savingVenta, setSavingVenta] = useState(false);
   const [ventaMsg, setVentaMsg] = useState('');
+  const [planes, setPlanes] = useState([]);
+  const [planSel, setPlanSel] = useState('');
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [planMsg, setPlanMsg] = useState('');
+  const [sesHechas, setSesHechas] = useState(0);
+  useEffect(()=>{ if(!cliente?.id) return; window._sb.from('sesiones').select('cantidad,contrato_id').eq('cliente_id',cliente.id).then(({data,error})=>{ if(!error) setSesHechas((data||[]).reduce((a,s)=>a+(s.cantidad||0),0)); }); },[cliente?.id]);
   useEffect(()=>{
     window._sb.from('setters').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setSetters(data||[]));
     window._sb.from('closers').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setClosers(data||[])).catch(()=>{});
+    window._sb.from('planes').select('id,nombre,precio_eur,precio_usd,canal').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[]));
   },[]);
+  const corregirPlan = async () => {
+    const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
+    if (!a?.id) { setPlanMsg('Este cliente no tiene contrato.'); return; }
+    if (!planSel) { setPlanMsg('Elige un plan.'); return; }
+    setSavingPlan(true); setPlanMsg('');
+    const p = planes.find(x=>x.id===planSel);
+    const upd = { plan_id: planSel };
+    if (p?.canal) upd.canal = p.canal;  // ajusta el canal al del plan (sin crear cobro)
+    const { error } = await window._sb.from('contratos').update(upd).eq('id', a.id);
+    setSavingPlan(false); setPlanMsg(error ? ('Error: '+error.message) : 'Plan actualizado ✓ (sin cobro)'); if(!error) loadContratos();
+  };
   const guardarInfo = async () => {
     setSavingInfo(true); setInfoMsg('');
     const { error } = await window._sb.from('clientes').update({
@@ -1614,7 +1631,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   }, [cliente]);
 
   useEffect(()=>{ loadContratos(); },[loadContratos]);
-  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'' }); },[contratos]);
+  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'' }); setPlanSel(a?.plan_id||''); },[contratos]);
   const guardarVenta = async () => {
     const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
     if (!a?.id) { setVentaMsg('Este cliente no tiene contrato.'); return; }
@@ -1647,13 +1664,14 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
               {cliente.pais && <span className="chip">{cliente.pais}</span>}
               {contrato && <span className={`chip ${contrato.canal?.toLowerCase()}`}>{contrato.canal}</span>}
               <span className={`chip ${cliente.activo?'activo':'inactivo'}`}>{cliente.activo?'Activo':'Inactivo'}</span>
+              {contrato?.canal==='PRESENCIAL' && sesionesPlan(contrato?.planes?.nombre)>0 && (()=>{ const tot=sesionesPlan(contrato.planes.nombre), rest=tot-sesHechas; return <span className="chip" style={{background:rest<=2?'#fbeee8':undefined,color:rest<=2?'#b04425':undefined}}>Sesiones: {sesHechas}/{tot} · quedan {rest}</span>; })()}
             </div>
           </div>
           <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-            <button className="ghost-btn" onClick={()=>setModal('renovar')}>Renovar contrato</button>
-            <button className="ghost-btn" onClick={()=>setModal('upgrade')}>Upgrade plan</button>
+            <button className="ghost-btn" onClick={()=>setRoute?.('clientes/renovar')}>Renovar contrato</button>
+            <button className="ghost-btn" onClick={()=>setRoute?.('clientes/upgrade')}>Upgrade plan</button>
             <button className="ghost-btn" onClick={()=>setModal('alargar')}>Alargar fecha</button>
-            <button className="ghost-btn" onClick={()=>setModal('baja')} style={{color:'#b04425',borderColor:'#e8c9bd'}}>Dar de baja</button>
+            <button className="ghost-btn" onClick={()=>setRoute?.('clientes/baja')} style={{color:'#b04425',borderColor:'#e8c9bd'}}>Dar de baja</button>
           </div>
         </div>
 
@@ -1714,6 +1732,22 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
                 </div>
                 <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Se suma a las comisiones del setter y del closer correspondiente.</div>
                 {ventaMsg && <div style={{marginTop:12,fontSize:13,color:ventaMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{ventaMsg}</div>}
+              </div>
+            </div>
+          )}
+
+          {tab==='info' && (
+            <div className="panel" style={{marginTop:20}}>
+              <div className="panel-head">
+                <h2 className="panel-title">Corregir <span className="italic">plan</span></h2>
+                <button onClick={corregirPlan} disabled={savingPlan} style={{padding:'9px 16px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',border:'none',cursor:'pointer'}}>{savingPlan?'Guardando…':'Guardar plan'}</button>
+              </div>
+              <div className="panel-body">
+                <div style={{maxWidth:420}}>
+                  <FS label="Plan del cliente (cambia sin cobrar)" val={planSel} onCh={setPlanSel}><option value="">— Elegir plan —</option>{planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}</FS>
+                </div>
+                <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Cambia el plan asignado sin generar pago (para corregir errores). No afecta a la facturación.</div>
+                {planMsg && <div style={{marginTop:12,fontSize:13,color:planMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{planMsg}</div>}
               </div>
             </div>
           )}
@@ -1806,10 +1840,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
         </div>
       </div>
 
-      {modal === 'renovar' && <RenovarModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); onClienteUpdated?.(); }}/>}
-      {modal === 'upgrade' && <UpgradeModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); }}/>}
       {modal === 'alargar' && <AlargarFechaModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ loadContratos(); }}/>}
-      {modal === 'baja' && <BajaModal cliente={cliente} contratoActual={contrato} onClose={()=>setModal(null)} onSaved={()=>{ onClienteUpdated?.(); }}/>}
     </>
   );
 };
@@ -2729,8 +2760,8 @@ const NuevoCliente = ({ setRoute }) => {
         canal_cierre:ctrt.canal_cierre, porcentaje_comision_setter:Number(ctrt.porcentaje_comision_setter)||null,
         precio_eur:Number(ctrt.precio_eur)||0, precio_usd:Number(ctrt.precio_usd)||0,
         comision_banco_eur:Number(ctrt.comision_banco_eur)||0, comision_banco_usd:Number(ctrt.comision_banco_usd)||0,
-        pago_entrenador_eur: ctrt.divisa_principal==='EUR' ? Number(ctrt.pago_entrenador)||0 : 0,
-        pago_entrenador_usd: ctrt.divisa_principal==='USD' ? Number(ctrt.pago_entrenador)||0 : 0,
+        pago_entrenador_eur: 0,
+        pago_entrenador_usd: Number(ctrt.pago_entrenador)||0,  // por SESIÓN, en dólares
         metodo_pago:ctrt.metodo_pago, divisa_principal:ctrt.divisa_principal,
         horas_semana:Number(ctrt.horas_semana)||null,
         fecha_inicio:ctrt.fecha_inicio, fecha_fin:ctrt.fecha_fin, estado:'activo',
@@ -2780,7 +2811,7 @@ const NuevoCliente = ({ setRoute }) => {
           {(ctrt.canal==='ONLINE'||ctrt.canal==='PRESENCIAL') && (
             <div style={{marginTop:18,display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,maxWidth:520}}>
               <FS label="Entrenador asignado" val={ctrt.entrenador_id} onCh={v=>sc('entrenador_id',v)}><option value="">— Sin entrenador (lo entrenas tú) —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</FS>
-              {ctrt.entrenador_id && <FF label={`Pago al entrenador / mes (${ctrt.divisa_principal})`} val={ctrt.pago_entrenador} onCh={v=>sc('pago_entrenador',v)} type="number" placeholder="0"/>}
+              {ctrt.entrenador_id && <FF label="Pago al entrenador por sesión ($)" val={ctrt.pago_entrenador} onCh={v=>sc('pago_entrenador',v)} type="number" placeholder="0"/>}
             </div>
           )}
         </div>
@@ -2854,7 +2885,19 @@ const NuevoCliente = ({ setRoute }) => {
 };
 
 // ─── MODAL SHELL ─────────────────────────────────────────────────────────────
-const ModalShell = ({ title, italic, onClose, children, footer, maxWidth=560 }) => (
+const ModalShell = ({ title, italic, onClose, children, footer, maxWidth=560, asPage }) => {
+  if (asPage) return (
+    <div className="page">
+      <button className="ghost-btn" onClick={onClose} style={{gap:6,marginBottom:14}}><Icon name="back" size={13}/>Volver a clientes</button>
+      <div className="page-header"><div>
+        <div className="page-eyebrow">Clientes</div>
+        <h1 className="page-title">{title}{italic&&<span className="italic"> {italic}</span>}</h1>
+      </div></div>
+      <div className="panel"><div className="panel-body" style={{maxWidth:640}}>{children}</div></div>
+      {footer && <div style={{marginTop:16,display:'flex',gap:10}}>{footer}</div>}
+    </div>
+  );
+  return (
   <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(20,19,16,0.5)',zIndex:100,display:'grid',placeItems:'center',padding:20}}>
     <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth,maxHeight:'90vh',overflow:'auto',background:'var(--bg)',borderRadius:14,border:'1px solid var(--line)',boxShadow:'0 24px 48px rgba(0,0,0,0.12)'}}>
       <div style={{padding:'18px 22px',borderBottom:'1px solid var(--line)',display:'flex',alignItems:'center',gap:12}}>
@@ -2865,12 +2908,13 @@ const ModalShell = ({ title, italic, onClose, children, footer, maxWidth=560 }) 
       {footer && <div style={{padding:'14px 22px',borderTop:'1px solid var(--line)',display:'flex',justifyContent:'flex-end',gap:10}}>{footer}</div>}
     </div>
   </div>
-);
+  );
+};
 
 // ─── MODAL RENOVAR ───────────────────────────────────────────────────────────
 const HOY_STR = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
-const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
+const RenovarModal = ({ cliente, contratoActual, onClose, onSaved, asPage }) => {
   const [planes, setPlanes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [selCliId, setSelCliId] = useState(cliente?.id || '');
@@ -2914,7 +2958,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   };
 
   return (
-    <ModalShell title="Renovar" italic="contrato" onClose={onClose} maxWidth={600}
+    <ModalShell title="Renovar" italic="contrato" onClose={onClose} maxWidth={600} asPage={asPage}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
         <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Renovar'}</button>
@@ -2959,7 +3003,7 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
 };
 
 // ─── MODAL UPGRADE ───────────────────────────────────────────────────────────
-const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
+const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved, asPage }) => {
   const [planes, setPlanes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [selCliId, setSelCliId] = useState(cliente?.id || '');
@@ -3010,7 +3054,7 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   };
 
   return (
-    <ModalShell title="Upgrade" italic="de plan" onClose={onClose} maxWidth={600}
+    <ModalShell title="Upgrade" italic="de plan" onClose={onClose} maxWidth={600} asPage={asPage}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
         <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Upgrade'}</button>
@@ -3052,7 +3096,7 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
 };
 
 // ─── MODAL BAJA ──────────────────────────────────────────────────────────────
-const BajaModal = ({ cliente, contratoActual, onClose, onSaved }) => {
+const BajaModal = ({ cliente, contratoActual, onClose, onSaved, asPage }) => {
   const [clientes, setClientes] = useState([]);
   const [selCliId, setSelCliId] = useState(cliente?.id || '');
   const [motivo, setMotivo] = useState('');
@@ -3075,7 +3119,7 @@ const BajaModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   };
 
   return (
-    <ModalShell title="Dar de" italic="baja" onClose={onClose} maxWidth={480}
+    <ModalShell title="Dar de" italic="baja" onClose={onClose} maxWidth={480} asPage={asPage}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
         <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'#b04425',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',opacity:saving?0.5:1,cursor:saving?'not-allowed':'pointer'}}>{saving?'Procesando…':'Dar de baja'}</button>
@@ -3958,17 +4002,19 @@ const MetricsPanel = () => {
   const toUSDp = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
   const factCanal = cl => sumPagosUsd(pagosMes(pagos, y, mo, cl));
   // Personal por canal: pago a entrenadores de los clientes activos del canal + gastos del panel Personal imputados a ese canal.
-  const personalCanalP = cl => contratos.filter(c => c.canal === cl && c.estado === 'activo').reduce((s, c) => s + toUSDp(c.pago_entrenador_eur, c.pago_entrenador_usd), 0);
+  const personalCanalP = cl => contratos.filter(c => c.canal === cl && c.estado === 'activo').reduce((s, c) => s + (c.pago_entrenador_usd||0)*sesionesPlan(c.planes?.nombre), 0);
   const personalFijoP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === 'PERSONAL' && g.imputa_canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
-  const gastoCanalP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + personalCanalP(cl) + personalFijoP(cl);
-  const canalRows = [['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => ({ lbl, fact: factCanal(cl), gasto: gastoCanalP(cl) }));
+  const gastoNegocioP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
+  const personalP = cl => personalCanalP(cl) + personalFijoP(cl);
+  const canalRows = [['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => ({ lbl, fact: factCanal(cl), gasto: gastoNegocioP(cl), personal: personalP(cl) }));
   const totFact = canalRows.reduce((s, r) => s + r.fact, 0);
-  const totGasto = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0) + personalCanalP('ONLINE') + personalCanalP('PRESENCIAL') + personalCanalP('SKOOL') + edE * 1.08 + edU;
+  const totNegocio = gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal !== 'PERSONAL').reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
+  const totPersonal = personalP('ONLINE') + personalP('PRESENCIAL') + personalP('SKOOL') + edE * 1.08 + edU;
   // Valor por hora presencial: facturación presencial activa / horas presenciales al mes
   const presAct = contratos.filter(c => c.estado === 'activo' && c.canal === 'PRESENCIAL');
   // Sesiones/mes = nº del plan. Valor de tu hora = (lo que cobras − lo que pagas al entrenador) ÷ sesiones.
   const sesMes = presAct.reduce((s, c) => s + sesionesPlan(c.planes?.nombre), 0);
-  const netoPres = presAct.reduce((s, c) => s + ((c.precio_eur || 0) + (c.precio_usd || 0)) - ((c.pago_entrenador_eur || 0) + (c.pago_entrenador_usd || 0)), 0);
+  const netoPres = presAct.reduce((s, c) => s + ((c.precio_eur || 0) + (c.precio_usd || 0)) - (c.pago_entrenador_usd || 0) * sesionesPlan(c.planes?.nombre), 0);
   const valorHora = sesMes > 0 ? netoPres / sesMes : 0;
 
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -4017,10 +4063,11 @@ const MetricsPanel = () => {
         <div className="mp-label">Por canal · {meses[mo]} (en $)</div>
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', paddingBottom: 4 }}><span style={{ flex: 1 }}></span><span style={{ width: 64, textAlign: 'right' }}>Fact.</span><span style={{ width: 56, textAlign: 'right' }}>Gastos</span><span style={{ width: 64, textAlign: 'right' }}>Benef.</span></div>
-          {canalRows.map(r => { const b = r.fact - r.gasto; return (
+          {canalRows.map(r => { const b = r.fact - r.gasto - r.personal; return (
             <div key={r.lbl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{r.lbl}</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(r.fact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(r.gasto)}</span><span style={{ width: 64, textAlign: 'right', color: b < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(b)}</span></div>
           ); })}
-          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totGasto)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totGasto) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totGasto)}</span></div>
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', color: 'var(--ink-dim)' }}><span style={{ flex: 1 }}>Gasto en personal</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totNegocio + totPersonal)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totNegocio - totPersonal) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totNegocio - totPersonal)}</span></div>
         </div>
       </div>
       <div className="mp-card mp-wide">
@@ -4035,6 +4082,120 @@ const MetricsPanel = () => {
         </div>
       </div>
     </aside>
+  );
+};
+
+// ─── SESIONES PRESENCIALES (parte de Adrián) ─────────────────────────────────
+const SesionesPresenciales = () => {
+  const [contratos, setContratos] = useState([]);
+  const [entrenadores, setEntrenadores] = useState([]);
+  const [sesiones, setSesiones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ contrato_id:'', entrenador_id:'', fecha:HOY_STR(), cantidad:1, pago_usd:0, nota:'' });
+  const IS = { padding:'9px 12px', background:'var(--bg)', border:'1px solid var(--line)', borderRadius:8, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%' };
+  const load = async () => {
+    setLoading(true);
+    const { data: ct } = await window._sb.from('contratos').select('id,cliente_id,estado,pago_entrenador_usd,entrenador_id,fecha_fin,clientes(nombre),planes(nombre)').eq('canal','PRESENCIAL').eq('estado','activo').order('fecha_fin');
+    setContratos(ct||[]);
+    const { data: e } = await window._sb.from('entrenadores').select('id,nombre').eq('activo',true).order('nombre');
+    setEntrenadores(e||[]);
+    const sres = await window._sb.from('sesiones').select('*, clientes(nombre)').order('fecha',{ascending:false});
+    if (sres.error) { setNeedsSetup(true); setSesiones([]); } else { setNeedsSetup(false); setSesiones(sres.data||[]); }
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); },[]);
+  const contratoSel = contratos.find(c=>c.id===form.contrato_id);
+  const sf = (k,v) => setForm(f=>({...f,[k]:v}));
+  const onContrato = id => { const c=contratos.find(x=>x.id===id); const rate=c?.pago_entrenador_usd||0; setForm(f=>({...f, contrato_id:id, entrenador_id:c?.entrenador_id||f.entrenador_id, pago_usd: rate ? (Number(f.cantidad)||0)*rate : f.pago_usd })); };
+  const onCantidad = v => { const cant=Number(v)||0; const rate=contratoSel?.pago_entrenador_usd||0; setForm(f=>({...f, cantidad:v, pago_usd: rate ? cant*rate : f.pago_usd })); };
+  const guardar = async () => {
+    if (!form.contrato_id) return;
+    setSaving(true);
+    const c = contratos.find(x=>x.id===form.contrato_id);
+    await window._sb.from('sesiones').insert({ cliente_id:c?.cliente_id, contrato_id:form.contrato_id, entrenador_id:form.entrenador_id||c?.entrenador_id||null, fecha:form.fecha, cantidad:Number(form.cantidad)||0, pago_usd:Number(form.pago_usd)||0, nota:form.nota||null });
+    setSaving(false); setForm({ contrato_id:'', entrenador_id:'', fecha:HOY_STR(), cantidad:1, pago_usd:0, nota:'' }); load();
+  };
+  const borrar = async id => { if(!confirm('¿Eliminar este registro de sesiones?')) return; await window._sb.from('sesiones').delete().eq('id',id); load(); };
+  const consumidas = cid => sesiones.filter(s=>s.contrato_id===cid).reduce((a,s)=>a+(s.cantidad||0),0);
+  const now=new Date();
+  const mesPagado = sesiones.filter(s=>{ const d=s.fecha?new Date(s.fecha+'T00:00:00'):null; return d&&d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth(); }).reduce((a,s)=>a+(s.pago_usd||0),0);
+  const weekAgo = new Date(now); weekAgo.setDate(now.getDate()-7);
+  const semPagado = sesiones.filter(s=>{ const d=s.fecha?new Date(s.fecha+'T00:00:00'):null; return d&&d>=weekAgo&&d<=now; }).reduce((a,s)=>a+(s.pago_usd||0),0);
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div><div className="page-eyebrow">Negocio · Presencial</div><h1 className="page-title">Sesiones <span className="italic">presenciales</span></h1></div>
+      </div>
+      {needsSetup ? (
+        <div className="panel"><div className="panel-body" style={{padding:30}}>
+          <p style={{fontSize:14,color:'var(--ink-dim)'}}>Falta un paso de base de datos para activar las sesiones. Pega el SQL que te paso al final del mensaje en Supabase y recarga.</p>
+        </div></div>
+      ) : (<>
+        <div className="kpi-grid">
+          <KpiCard label="A pagar esta semana" value={`$${Math.round(semPagado)}`} unit="" icon="money" sub="Sesiones registradas (7 días)"/>
+          <KpiCard label="A pagar este mes" value={`$${Math.round(mesPagado)}`} unit="" icon="money" sub={MONTHS_LONG[now.getMonth()]}/>
+          <KpiCard label="Clientes presenciales" value={contratos.length} unit="" icon="users" sub="activos"/>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Registrar <span className="italic">parte de sesiones</span></h2></div>
+          <div className="panel-body">
+            <div style={{display:'grid',gridTemplateColumns:'2fr 1.4fr 1fr 0.8fr 1fr auto',gap:12,alignItems:'end'}}>
+              <div><FLbl t="Cliente"/><select value={form.contrato_id} onChange={e=>onContrato(e.target.value)} style={IS}><option value="">— Cliente —</option>{contratos.map(c=><option key={c.id} value={c.id}>{c.clientes?.nombre} · {c.planes?.nombre}</option>)}</select></div>
+              <div><FLbl t="Entrenador"/><select value={form.entrenador_id} onChange={e=>sf('entrenador_id',e.target.value)} style={IS}><option value="">—</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}</select></div>
+              <div><FLbl t="Fecha"/><input type="date" value={form.fecha} onChange={e=>sf('fecha',e.target.value)} style={IS}/></div>
+              <div><FLbl t="Sesiones"/><input type="number" value={form.cantidad} onChange={e=>onCantidad(e.target.value)} style={IS}/></div>
+              <div><FLbl t="Pago $"/><input type="number" value={form.pago_usd} onChange={e=>sf('pago_usd',e.target.value)} style={IS}/></div>
+              <button onClick={guardar} disabled={saving||!form.contrato_id} style={{padding:'10px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:600,border:'none',cursor:'pointer',height:38}}>{saving?'…':'Registrar'}</button>
+            </div>
+            {contratoSel?.pago_entrenador_usd>0 && <div style={{marginTop:8,fontSize:12,color:'var(--ink-faint)'}}>Tarifa de este cliente: ${contratoSel.pago_entrenador_usd}/sesión · el pago se calcula solo.</div>}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Control <span className="italic">por cliente</span></h2><span className="panel-sub">sesiones del plan</span></div>
+          <div className="table-wrap">
+            {loading ? <div className="loading">Cargando…</div> : (
+              <table className="data-table">
+                <thead><tr><th>Cliente</th><th>Plan</th><th style={{textAlign:'right'}}>Plan</th><th style={{textAlign:'right'}}>Hechas</th><th style={{textAlign:'right'}}>Restantes</th><th>Vence</th></tr></thead>
+                <tbody>
+                  {contratos.length===0 ? <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'var(--ink-faint)'}}>Sin clientes presenciales activos.</td></tr> : contratos.map(c=>{
+                    const tot=sesionesPlan(c.planes?.nombre), hechas=consumidas(c.id), rest=tot-hechas;
+                    return (
+                      <tr key={c.id}>
+                        <td className="name">{c.clientes?.nombre}</td>
+                        <td style={{fontSize:12}}>{c.planes?.nombre||'—'}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{tot||'—'}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{hechas}</td>
+                        <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:rest<=2?'var(--neg)':'var(--ink)'}}>{tot?rest:'—'}{tot&&rest<=2?' ⚠️':''}</td>
+                        <td className="date" style={{fontSize:12}}>{c.fecha_fin||'—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2 className="panel-title">Historial de <span className="italic">sesiones</span></h2><span className="panel-sub">{sesiones.length} registros</span></div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead><tr><th>Fecha</th><th>Cliente</th><th style={{textAlign:'right'}}>Sesiones</th><th style={{textAlign:'right'}}>Pago $</th><th>Nota</th><th style={{width:50}}></th></tr></thead>
+              <tbody>
+                {sesiones.length===0 ? <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'var(--ink-faint)'}}>Aún no hay sesiones registradas.</td></tr> : sesiones.map(s=>(
+                  <tr key={s.id}><td className="date">{s.fecha}</td><td className="name">{s.clientes?.nombre||'—'}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{s.cantidad}</td><td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>${s.pago_usd||0}</td><td style={{fontSize:12,color:'var(--ink-faint)'}}>{s.nota||'—'}</td><td style={{textAlign:'right'}}><button className="ghost-btn" style={{color:'var(--neg)',padding:'3px 7px'}} onClick={()=>borrar(s.id)}>✕</button></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>)}
+    </div>
   );
 };
 
@@ -4107,7 +4268,11 @@ const App = () => {
       case 'dashboard/skool': return <DashboardCanal canal="SKOOL" nombre="Skool community" eyebrow="Skool"/>;
       case 'clientes/lista': return <ClientesLista setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>;
       case 'clientes/nuevo': return <NuevoCliente setRoute={setRoute}/>;
+      case 'clientes/renovar': return <RenovarModal asPage cliente={selectedCliente} onClose={()=>setRoute(selectedCliente?'clientes/ficha':'clientes/lista')} onSaved={()=>setRoute(selectedCliente?'clientes/ficha':'clientes/lista')}/>;
+      case 'clientes/upgrade': return <UpgradeModal asPage cliente={selectedCliente} onClose={()=>setRoute(selectedCliente?'clientes/ficha':'clientes/lista')} onSaved={()=>setRoute(selectedCliente?'clientes/ficha':'clientes/lista')}/>;
+      case 'clientes/baja': return <BajaModal asPage cliente={selectedCliente} onClose={()=>setRoute(selectedCliente?'clientes/ficha':'clientes/lista')} onSaved={()=>setRoute('clientes/lista')}/>;
       case 'clientes/ficha': return <FichaCliente cliente={selectedCliente} setRoute={setRoute} onClienteUpdated={()=>setSelectedCliente(c=>c?{...c,activo:false}:c)}/>;
+      case 'clientes/sesiones': return <SesionesPresenciales/>;
       case 'clientes/vencimientos': return <Vencimientos setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>;
       case 'clientes/etiquetas': return <EtiquetasClientes setRoute={setRoute} setSelectedCliente={setSelectedCliente}/>;
       case 'clientes/formulario': return <FormularioClientes setRoute={setRoute}/>;
@@ -4140,7 +4305,7 @@ const App = () => {
     <div className={'app'+(showPanel?' has-panel':'')}>
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
-        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit}/>
+        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit} setSelectedCliente={setSelectedCliente}/>
         {renderPage()}
       </main>
       {showPanel && <MetricsPanel/>}
