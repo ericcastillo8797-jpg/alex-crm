@@ -506,6 +506,7 @@ const NAV = [
   { id:'equipo', label:'Equipo', icon:'team', items:[
     {id:'equipo/entrenadores', label:'Entrenadores'},
     {id:'equipo/setters', label:'Setters'},
+    {id:'equipo/closers', label:'Closers'},
     {id:'equipo/roles', label:'Roles y permisos'},
   ]},
   { id:'ajustes', label:'Ajustes', icon:'settings', items:[
@@ -513,10 +514,10 @@ const NAV = [
 ];
 
 const LOCKED_GROUPS = new Set(['agenda','delivery']);
-const LOCKED_ITEMS = new Set(['equipo/roles','libreria/ejercicios','libreria/workouts','libreria/planes','libreria/alimentos','libreria/documentos','libreria/formularios']);
+const LOCKED_ITEMS = new Set(['libreria/ejercicios','libreria/workouts','libreria/planes','libreria/alimentos','libreria/documentos','libreria/formularios']);
 
 const getNavForRole = (rol) => {
-  if (!rol || rol === 'founder' || rol === 'admin') return NAV.filter(g => g.id !== 'clientes-ent');
+  if (!rol || rol === 'founder' || rol === 'admin' || rol === 'ceo') return NAV.filter(g => g.id !== 'clientes-ent');
   if (rol === 'entrenador') return NAV.filter(g => g.id !== 'negocio' && g.id !== 'comisiones');
   if (rol === 'cocinera') return NAV.filter(g => g.id === 'delivery');
   return NAV;
@@ -921,7 +922,7 @@ const DashboardGeneral = () => {
       setClientes(data || []);
       const { data: pg } = await window._sb.from('pagos').select('*, clientes(nombre, pais)');
       setPagos(pg || []);
-      const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal').eq('activo', true);
+      const { data: gs } = await window._sb.from('gastos').select('*').eq('activo', true);
       setGastos(gs || []);
       setLoading(false);
     };
@@ -932,7 +933,9 @@ const DashboardGeneral = () => {
   const factUsdCanal = canal => sumPagosUsd(pagosMes(pagos, year, month, canal));
   // Gastos de personal por canal = lo que pagas a los entrenadores de los clientes activos de ese canal.
   const personalCanal = canal => clientes.filter(c=>c.canal===canal && c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
-  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalCanal(canal);
+  // Gastos del panel "Personal" imputados a este canal (Adrián→presencial; Daniel/Martín/setter/closer→online).
+  const personalFijoCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal==='PERSONAL'&&g.imputa_canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
+  const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalCanal(canal) + personalFijoCanal(canal);
   const factTotalUsd = factUsdCanal('ONLINE')+factUsdCanal('PRESENCIAL')+factUsdCanal('SKOOL');
   const personalTotal = clientes.filter(c=>c.estado==='activo').reduce((s,c)=>s+toUSD(c.pago_entrenador_eur,c.pago_entrenador_usd),0);
   const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0) + personalTotal;
@@ -2261,7 +2264,7 @@ const ComisionesEntrenadores = () => {
   useEffect(() => { load(); }, []);
 
   const clientesDe = id => contratos.filter(c => c.entrenador_id === id);
-  const esPres = id => { const cs = clientesDe(id); return cs.length > 0 && cs.filter(c => c.canal === 'PRESENCIAL').length >= cs.length / 2; };
+  const esPres = id => entrenadores.find(e => e.id === id)?.tipo === 'presencial';
   const lista = entrenadores.filter(e => e.nombre !== 'Alex');
   const online = lista.filter(e => !esPres(e.id));
   const presen = lista.filter(e => esPres(e.id));
@@ -2461,7 +2464,8 @@ const EconomiaGastos = () => {
   const saveGasto = async () => {
     const g = editGasto;
     if (!g.concepto || !g.concepto.trim()) return;
-    const row = { concepto:g.concepto.trim(), canal:g.canal||'ONLINE', frecuencia:g.frecuencia||'MENSUAL', metodo_pago:(g.metodo_pago||'').trim()||null, importe_eur:Number(g.importe_eur)||0, importe_usd:Number(g.importe_usd)||0, activo:true };
+    const canalG = g.canal||'ONLINE';
+    const row = { concepto:g.concepto.trim(), canal:canalG, frecuencia:g.frecuencia||'MENSUAL', metodo_pago:(g.metodo_pago||'').trim()||null, importe_eur:Number(g.importe_eur)||0, importe_usd:Number(g.importe_usd)||0, imputa_canal: canalG==='PERSONAL' ? (g.imputa_canal||'ONLINE') : null, activo:true };
     if (g.id) await window._sb.from('gastos').update(row).eq('id', g.id);
     else await window._sb.from('gastos').insert(row);
     setEditGasto(null); load();
@@ -2609,6 +2613,14 @@ const EconomiaGastos = () => {
                   </select>
                 </label>
               </div>
+              {editGasto.canal==='PERSONAL' && (
+                <label style={{fontSize:12,color:'var(--ink-faint)'}}>Imputar a (para el beneficio por canal)
+                  <select value={editGasto.imputa_canal||'ONLINE'} onChange={e=>setEditGasto({...editGasto,imputa_canal:e.target.value})} style={{width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:14,marginTop:4}}>
+                    <option value="ONLINE">Online (Martín, Daniel, setter, closer…)</option>
+                    <option value="PRESENCIAL">Presencial (Adrián…)</option>
+                  </select>
+                </label>
+              )}
               <label style={{fontSize:12,color:'var(--ink-faint)'}}>Método de pago
                 <input value={editGasto.metodo_pago||''} onChange={e=>setEditGasto({...editGasto,metodo_pago:e.target.value})} style={{width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:8,fontSize:14,marginTop:4,boxSizing:'border-box'}}/>
               </label>
@@ -3131,8 +3143,8 @@ const DeliveryEntregas = () => {
 };
 
 // ─── ROLES Y PERMISOS ────────────────────────────────────────────────────────
-const ROL_LABELS = { founder:'Founder', admin:'Admin', entrenador:'Entrenador', cocinera:'Cocinera' };
-const ROL_COLORS = { founder:'#111110', admin:'#3f7a2a', entrenador:'#2a5ea0', cocinera:'#9c4a00' };
+const ROL_LABELS = { founder:'Founder', ceo:'CEO', admin:'Admin', entrenador:'Entrenador', setter:'Setter', closer:'Closer', cocinera:'Cocinera' };
+const ROL_COLORS = { founder:'#111110', ceo:'#6b4ea0', admin:'#3f7a2a', entrenador:'#2a5ea0', setter:'#a06a2a', closer:'#a02a5e', cocinera:'#9c4a00' };
 
 const RolesPermisos = () => {
   const [perfiles, setPerfiles] = useState([]);
@@ -3176,9 +3188,12 @@ const RolesPermisos = () => {
   };
 
   const PERMISOS = [
-    { rol:'founder',    acceso:'Acceso total. Puede gestionar roles, negocio, clientes, librería, agenda y delivery.' },
-    { rol:'admin',      acceso:'Acceso total. Igual que Founder.' },
+    { rol:'founder',    acceso:'Acceso total y edición. Eric: ve y edita todo.' },
+    { rol:'ceo',        acceso:'Ve todo el negocio (igual que Founder) pero sin editar. Alex.' },
+    { rol:'admin',      acceso:'Acceso total.' },
     { rol:'entrenador', acceso:'Todo excepto Negocio (dashboards, facturación, gastos, comisiones).' },
+    { rol:'setter',     acceso:'Pendiente de definir (cuando se conecte su acceso).' },
+    { rol:'closer',     acceso:'Pendiente de definir (cuando se conecte su acceso).' },
     { rol:'cocinera',   acceso:'Solo sección Comidas Delivery.' },
   ];
 
@@ -3233,8 +3248,11 @@ const RolesPermisos = () => {
               <label style={{fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--ink-faint)',display:'block',marginBottom:5}}>Rol</label>
               <select value={newForm.rol} onChange={e=>setNewForm(f=>({...f,rol:e.target.value}))} style={{padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}>
                 <option value="founder">Founder</option>
+                <option value="ceo">CEO</option>
                 <option value="admin">Admin</option>
                 <option value="entrenador">Entrenador</option>
+                <option value="setter">Setter</option>
+                <option value="closer">Closer</option>
                 <option value="cocinera">Cocinera</option>
               </select>
             </div>
@@ -3280,8 +3298,11 @@ const RolesPermisos = () => {
                       <select value={p.rol} onChange={e=>changeRol(p.id, e.target.value)}
                         style={{padding:'5px 10px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:12,fontFamily:'inherit',outline:'none',cursor:'pointer'}}>
                         <option value="founder">Founder</option>
+                        <option value="ceo">CEO</option>
                         <option value="admin">Admin</option>
                         <option value="entrenador">Entrenador</option>
+                        <option value="setter">Setter</option>
+                        <option value="closer">Closer</option>
                         <option value="cocinera">Cocinera</option>
                       </select>
                     </td>
@@ -3310,6 +3331,7 @@ const EquipoTabla = ({ tipo }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [newNombre, setNewNombre] = useState('');
   const [newCoste, setNewCoste] = useState('');
+  const [newTipo, setNewTipo] = useState('online');
   const [saving, setSaving] = useState(false);
   const table = tipo==='entrenadores' ? 'entrenadores' : 'setters';
   const labelPlural = tipo==='entrenadores' ? 'Entrenadores' : 'Setters';
@@ -3352,17 +3374,17 @@ const EquipoTabla = ({ tipo }) => {
     if (!newNombre.trim()) return;
     setSaving(true);
     const row = tipo==='entrenadores'
-      ? { nombre: newNombre.trim(), activo: true, coste_hora_usd: Number(newCoste)||null }
+      ? { nombre: newNombre.trim(), activo: true, coste_hora_usd: Number(newCoste)||null, tipo: newTipo }
       : { nombre: newNombre.trim(), activo: true, comision_chat: 10, comision_llamada: 5 };
     await window._sb.from(table).insert(row);
-    setNewNombre(''); setNewCoste('');
+    setNewNombre(''); setNewCoste(''); setNewTipo('online');
     setShowAdd(false);
     setSaving(false);
     load();
   };
 
-  // Clasifica al entrenador por el canal mayoritario de sus clientes activos.
-  const esPres = it => { const cc = canalCnt[it.id]; return !!(cc && cc.PRESENCIAL > cc.ONLINE); };
+  // Clasifica por el tipo guardado del entrenador (online / presencial).
+  const esPres = it => it.tipo === 'presencial';
   const online = items.filter(i => !esPres(i));
   const presen = items.filter(i => esPres(i));
 
@@ -3433,7 +3455,8 @@ const EquipoTabla = ({ tipo }) => {
       {showAdd && (
         <div style={{padding:'18px 20px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:12,marginBottom:20,display:'flex',alignItems:'center',gap:12}}>
           <input autoFocus value={newNombre} onChange={e=>setNewNombre(e.target.value)} onKeyDown={e=>e.key==='Enter'&&añadir()} placeholder={`Nombre del ${labelSing}…`} style={{flex:1,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>
-          {tipo==='entrenadores' && <input type="number" value={newCoste} onChange={e=>setNewCoste(e.target.value)} placeholder="Coste/hora $" style={{width:140,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>}
+          {tipo==='entrenadores' && <select value={newTipo} onChange={e=>setNewTipo(e.target.value)} style={{width:150,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}><option value="online">Online</option><option value="presencial">Presencial</option></select>}
+          {tipo==='entrenadores' && <input type="number" value={newCoste} onChange={e=>setNewCoste(e.target.value)} placeholder="Coste/hora $ (opcional)" style={{width:170,padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}/>}
           <button onClick={añadir} disabled={saving} style={{padding:'9px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:500}}>{saving?'Guardando…':'Guardar'}</button>
           <button onClick={()=>{setShowAdd(false);setNewNombre('');}} className="ghost-btn">Cancelar</button>
         </div>
@@ -4058,6 +4081,7 @@ const App = () => {
       case 'delivery/entregas': return <DeliveryEntregas/>;
       case 'equipo/entrenadores': return <EquipoTabla tipo="entrenadores"/>;
       case 'equipo/setters': return <EquipoTabla tipo="setters"/>;
+      case 'equipo/closers': return <ComisionesClosers/>;
       case 'equipo/editores': return <EditoresVideo/>;
       case 'libreria/programas': return <Programas/>;
       case 'equipo/roles': return <RolesPermisos/>;
@@ -4072,13 +4096,14 @@ const App = () => {
     }
   };
 
-  const isAdmin = perfil && ['founder','admin'].includes(perfil.rol);
-  const showPanel = isAdmin;
+  const canEdit = perfil && ['founder','admin'].includes(perfil.rol);   // Eric edita; Alex (CEO) no.
+  const canView = perfil && ['founder','admin','ceo'].includes(perfil.rol);
+  const showPanel = canView;
   return (
     <div className={'app'+(showPanel?' has-panel':'')}>
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
-        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={isAdmin}/>
+        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit}/>
         {renderPage()}
       </main>
       {showPanel && <MetricsPanel/>}
