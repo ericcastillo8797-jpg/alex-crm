@@ -4056,7 +4056,7 @@ const MetricsPanel = () => {
       </div>
       <div className="mp-card">
         <div className="mp-label">Valor de tu hora (presencial)</div>
-        <div className="mp-value">{sesMes > 0 ? `$${r0(valorHora)}` : '—'}<span className="u">/h</span></div>
+        <div className="mp-value">{sesMes > 0 ? `$${r0(valorHora)}` : '—'}<span className="u">/hora</span></div>
         <div className="mp-sub">{sesMes > 0 ? `${sesMes} sesiones/mes · neto tras pagar entrenadores` : 'sin clientes presenciales activos'}</div>
       </div>
       <div className="mp-card mp-wide">
@@ -4066,7 +4066,11 @@ const MetricsPanel = () => {
           {canalRows.map(r => { const b = r.fact - r.gasto - r.personal; return (
             <div key={r.lbl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{r.lbl}</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(r.fact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(r.gasto)}</span><span style={{ width: 64, textAlign: 'right', color: b < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(b)}</span></div>
           ); })}
-          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', color: 'var(--ink-dim)' }}><span style={{ flex: 1 }}>Gasto en personal</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
+          <div style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', padding: '8px 0 2px', marginTop: 4, borderTop: '1px dashed var(--line)' }}>Gasto en personal</div>
+          {[['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => { const p = personalP(cl); if (!p) return null; return (
+            <div key={cl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{lbl}</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(p)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
+          ); })}
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', fontWeight: 600 }}><span style={{ flex: 1 }}>Personal total</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
           <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totNegocio + totPersonal)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totNegocio - totPersonal) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totNegocio - totPersonal)}</span></div>
         </div>
       </div>
