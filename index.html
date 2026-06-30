@@ -630,50 +630,26 @@ const Sidebar = ({ route, setRoute, mobileOpen, setMobileOpen, user, onLogout, p
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
 // ─── ACCIONES RÁPIDAS (fijas arriba a la derecha, en cualquier menú) ───────────
 const QuickActions = ({ setRoute }) => {
-  const [clientes, setClientes] = useState([]);
-  const [pick, setPick] = useState(null);      // 'renovar' | 'upgrade' | 'baja'
-  const [selId, setSelId] = useState('');
-  const [modal, setModal] = useState(null);
-  const load = () => window._sb.from('clientes')
-    .select('id,nombre, contratos(id,estado,canal,fecha_inicio,fecha_fin,precio_eur,precio_usd,divisa_principal,metodo_pago,comision_banco_eur,comision_banco_usd,canal_cierre,porcentaje_comision_setter,entrenador_id,setter_id,planes(nombre))')
-    .eq('activo', true).order('nombre').then(({ data }) => setClientes(data || []));
-  useEffect(() => { load(); }, []);
-  const sel = clientes.find(c => c.id === selId) || null;
-  const contratoActual = sel ? (sel.contratos?.find(c => c.estado === 'activo') || sel.contratos?.[0] || null) : null;
-  const SS = { padding: '10px 12px', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', width: '100%', appearance: 'none' };
+  const [modal, setModal] = useState(null);   // 'renovar' | 'upgrade' | 'baja'
   const acts = [
     { id: 'alta', label: '+ Nuevo cliente', color: 'var(--ink)' },
     { id: 'renovar', label: 'Renovar', color: '#b07a2a' },
     { id: 'upgrade', label: 'Upgrade', color: '#c9a227' },
     { id: 'baja', label: 'Baja', color: '#b04425' },
   ];
-  const meta = { renovar: { t: 'Renovar', i: 'contrato', verbo: 'Renovar' }, upgrade: { t: 'Hacer', i: 'upgrade', verbo: 'Continuar' }, baja: { t: 'Dar de', i: 'baja', verbo: 'Continuar' } }[pick] || {};
   return (
     <>
       <div className="quick-actions">
         {acts.map(a => (
           <button key={a.id} className="qa-btn" style={{ background: a.color }}
-            onClick={() => a.id === 'alta' ? setRoute('clientes/nuevo') : (setSelId(''), setPick(a.id))}>
+            onClick={() => a.id === 'alta' ? setRoute('clientes/nuevo') : setModal(a.id)}>
             {a.label}
           </button>
         ))}
       </div>
-      {pick && (
-        <ModalShell title={meta.t} italic={meta.i} onClose={() => setPick(null)} maxWidth={460}
-          footer={<>
-            <button className="ghost-btn" onClick={() => setPick(null)}>Cancelar</button>
-            <button disabled={!sel} onClick={() => { setModal(pick); setPick(null); }} style={{ padding: '10px 18px', fontSize: 13, fontWeight: 500, borderRadius: 8, background: 'var(--ink)', color: '#fff', border: 'none', cursor: sel ? 'pointer' : 'not-allowed', opacity: sel ? 1 : 0.4 }}>{meta.verbo}</button>
-          </>}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <span style={{ fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Cliente</span>
-            <select value={selId} onChange={e => setSelId(e.target.value)} style={SS}><option value="">— Selecciona un cliente —</option>{clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-            {sel && contratoActual && <div style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Plan actual: <b style={{ color: 'var(--ink)' }}>{contratoActual.planes?.nombre || '—'}</b> · vence {contratoActual.fecha_fin || '—'}</div>}
-          </div>
-        </ModalShell>
-      )}
-      {modal === 'renovar' && sel && <RenovarModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setModal(null); }} />}
-      {modal === 'upgrade' && sel && <UpgradeModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setModal(null); }} />}
-      {modal === 'baja' && sel && <BajaModal cliente={sel} contratoActual={contratoActual} onClose={() => setModal(null)} onSaved={() => { load(); setSelId(''); setModal(null); }} />}
+      {modal === 'renovar' && <RenovarModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
+      {modal === 'upgrade' && <UpgradeModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
+      {modal === 'baja' && <BajaModal onClose={() => setModal(null)} onSaved={() => setModal(null)} />}
     </>
   );
 };
@@ -2805,85 +2781,91 @@ const ModalShell = ({ title, italic, onClose, children, footer, maxWidth=560 }) 
 );
 
 // ─── MODAL RENOVAR ───────────────────────────────────────────────────────────
+const HOY_STR = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+
 const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   const [planes, setPlanes] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [selCliId, setSelCliId] = useState(cliente?.id || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    plan_id:contratoActual?.plan_id||'', canal:contratoActual?.canal||'ONLINE',
-    fecha_inicio:'', fecha_fin:'',
-    precio_eur:contratoActual?.precio_eur||0, precio_usd:contratoActual?.precio_usd||0,
-    comision_banco_eur:contratoActual?.comision_banco_eur||0, comision_banco_usd:contratoActual?.comision_banco_usd||0,
-    metodo_pago:contratoActual?.metodo_pago||'Stripe', divisa_principal:contratoActual?.divisa_principal||'EUR',
-  });
-  useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
+  const [form, setForm] = useState({ plan_id:'', divisa:'EUR', precio:0, comision:0, metodo_pago:'Stripe', fecha_inicio:HOY_STR(), fecha_fin:'' });
+  useEffect(()=>{
+    window._sb.from('planes').select('id,nombre,precio_eur,precio_usd,canal').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[]));
+    if (!cliente) window._sb.from('clientes').select('id,nombre, contratos(id,estado,canal,plan_id,fecha_inicio,fecha_fin,precio_eur,precio_usd,divisa_principal,metodo_pago,entrenador_id,setter_id,porcentaje_comision_setter,canal_cierre,planes(nombre))').eq('activo',true).order('nombre').then(({data})=>setClientes(data||[]));
+  },[]);
+  const cli = cliente || clientes.find(c=>c.id===selCliId) || null;
+  const ctto = contratoActual || (cli?.contratos?.find(c=>c.estado==='activo') || cli?.contratos?.[0] || null);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
   const SS = FLD_SS;
+  const precioPlan = (p, div) => p ? (div==='EUR' ? (p.precio_eur??0) : (p.precio_usd??0)) : null;
+  const pickPlan = id => { const p=planes.find(x=>x.id===id); setForm(f=>({...f, plan_id:id, precio: p ? precioPlan(p,f.divisa) : f.precio })); };
+  const pickDivisa = d => { const p=planes.find(x=>x.id===form.plan_id); setForm(f=>({...f, divisa:d, precio: p ? precioPlan(p,d) : f.precio })); };
 
   const save = async () => {
-    if (!form.fecha_fin) { setError('Pon la nueva fecha de fin.'); return; }
+    if (!cli) { setError('Selecciona un cliente.'); return; }
+    if (!form.fecha_fin) { setError('Pon la fecha de fin.'); return; }
     setSaving(true); setError('');
-    if (contratoActual?.id) await window._sb.from('contratos').update({estado:'inactivo'}).eq('id',contratoActual.id);
-    const hoy = new Date(); const fechaPago = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
-    const canalR = contratoActual?.canal||form.canal||'ONLINE';
+    if (ctto?.id) await window._sb.from('contratos').update({estado:'inactivo'}).eq('id',ctto.id);
+    const eur = form.divisa==='EUR' ? Number(form.precio)||0 : 0;
+    const usd = form.divisa==='USD' ? Number(form.precio)||0 : 0;
+    const ceur = form.divisa==='EUR' ? Number(form.comision)||0 : 0;
+    const cusd = form.divisa==='USD' ? Number(form.comision)||0 : 0;
+    const canalR = ctto?.canal || planes.find(x=>x.id===form.plan_id)?.canal || 'ONLINE';
+    const fi = form.fecha_inicio || HOY_STR();
     const { data: nuevo, error: err } = await window._sb.from('contratos').insert({
-      cliente_id:cliente?.id, plan_id:form.plan_id||null, canal:canalR,
-      precio_eur:Number(form.precio_eur)||0, precio_usd:Number(form.precio_usd)||0,
-      comision_banco_eur:Number(form.comision_banco_eur)||0, comision_banco_usd:Number(form.comision_banco_usd)||0,
-      metodo_pago:form.metodo_pago, divisa_principal:form.divisa_principal,
-      fecha_inicio:fechaPago, fecha_fin:form.fecha_fin, estado:'activo',
-      entrenador_id:contratoActual?.entrenador_id||null, setter_id:contratoActual?.setter_id||null,
-      porcentaje_comision_setter:contratoActual?.porcentaje_comision_setter||null,
-      canal_cierre:contratoActual?.canal_cierre||null,
+      cliente_id:cli.id, plan_id:form.plan_id||ctto?.plan_id||null, canal:canalR,
+      precio_eur:eur, precio_usd:usd, comision_banco_eur:ceur, comision_banco_usd:cusd,
+      metodo_pago:form.metodo_pago, divisa_principal:form.divisa,
+      fecha_inicio:fi, fecha_fin:form.fecha_fin, estado:'activo',
+      entrenador_id:ctto?.entrenador_id||null, setter_id:ctto?.setter_id||null,
+      porcentaje_comision_setter:ctto?.porcentaje_comision_setter||null, canal_cierre:ctto?.canal_cierre||null,
     }).select('id').single();
     if (err) { setSaving(false); setError(err.message); return; }
-    // La renovación es un pago nuevo de ESTE mes
-    await window._sb.from('pagos').insert({
-      cliente_id:cliente?.id, contrato_id:nuevo?.id||null, fecha:fechaPago,
-      monto_eur:Number(form.precio_eur)||0, monto_usd:Number(form.precio_usd)||0,
-      canal:canalR, concepto:'Renovación',
-    });
-    setSaving(false);
-    onSaved?.(); onClose();
+    await window._sb.from('pagos').insert({ cliente_id:cli.id, contrato_id:nuevo?.id||null, fecha:fi, monto_eur:eur, monto_usd:usd, canal:canalR, concepto:'Renovación' });
+    setSaving(false); onSaved?.(); onClose();
   };
 
   return (
     <ModalShell title="Renovar" italic="contrato" onClose={onClose} maxWidth={600}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
-        <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Confirmar renovación'}</button>
+        <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Renovar'}</button>
       </>}
     >
-      {contratoActual && (
-        <div style={{padding:'12px 14px',background:'var(--bg-2)',borderRadius:10,marginBottom:18}}>
-          <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:4}}>Contrato actual</div>
-          <div style={{display:'flex',gap:18,flexWrap:'wrap',fontSize:13}}>
-            <span><b style={{color:'var(--ink)'}}>{contratoActual?.planes?.nombre||'—'}</b></span>
-            <span style={{color:'var(--ink-faint)'}}>Inicio: {contratoActual?.fecha_inicio||'—'}</span>
-            <span style={{color:'var(--ink-faint)'}}>Fin: {contratoActual?.fecha_fin||'—'}</span>
-          </div>
-        </div>
-      )}
       {error && <div style={{padding:'10px 14px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:8,marginBottom:16,fontSize:13,color:'var(--neg)'}}>{error}</div>}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <div style={{gridColumn:'span 2',display:'flex',flexDirection:'column',gap:6}}>
-          <FLbl t="Plan"/>
-          <select value={form.plan_id} onChange={e=>{ const p=planes.find(x=>x.id===e.target.value); setForm(f=>({...f, plan_id:e.target.value, ...(p?{precio_eur:p.precio_eur??f.precio_eur, precio_usd:p.precio_usd??f.precio_usd}:{})})); }} style={SS}>
-            <option value="">— Mismo plan</option>
+        {!cliente && (
+          <div style={{gridColumn:'span 2'}}>
+            <FS label="Cliente" val={selCliId} onCh={setSelCliId}>
+              <option value="">— Busca y elige el cliente —</option>
+              {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </FS>
+          </div>
+        )}
+        {ctto && (
+          <div style={{gridColumn:'span 2',padding:'10px 14px',background:'var(--bg-2)',borderRadius:10,fontSize:13}}>
+            <span style={{color:'var(--ink-faint)'}}>Plan actual: </span><b style={{color:'var(--ink)'}}>{ctto?.planes?.nombre||'—'}</b>
+            <span style={{color:'var(--ink-faint)'}}> · vence {ctto?.fecha_fin||'—'}</span>
+          </div>
+        )}
+        <div style={{gridColumn:'span 2'}}>
+          <FS label="Plan" val={form.plan_id} onCh={pickPlan}>
+            <option value="">— Mismo plan —</option>
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          </FS>
         </div>
-        <FF label="Nueva fecha fin" val={form.fecha_fin} onCh={v=>sf('fecha_fin',v)} type="date"/>
-        <FF label="Precio EUR" val={form.precio_eur} onCh={v=>sf('precio_eur',v)} type="number"/>
-        <FF label="Precio USD" val={form.precio_usd} onCh={v=>sf('precio_usd',v)} type="number"/>
-        <FF label="Comisión banco EUR" val={form.comision_banco_eur} onCh={v=>sf('comision_banco_eur',v)} type="number"/>
-        <FF label="Comisión banco USD" val={form.comision_banco_usd} onCh={v=>sf('comision_banco_usd',v)} type="number"/>
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          <FLbl t="Método de pago"/>
-          <select value={form.metodo_pago} onChange={e=>sf('metodo_pago',e.target.value)} style={SS}>
-            {['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}
-          </select>
-        </div>
+        <FS label="Divisa del pago" val={form.divisa} onCh={pickDivisa}>
+          <option value="EUR">€ Euro</option>
+          <option value="USD">$ Dólar</option>
+        </FS>
+        <FF label={`Precio (${form.divisa})`} val={form.precio} onCh={v=>sf('precio',v)} type="number"/>
+        <FF label={`Comisión banco (${form.divisa})`} val={form.comision} onCh={v=>sf('comision',v)} type="number"/>
+        <FS label="Método de pago" val={form.metodo_pago} onCh={v=>sf('metodo_pago',v)}>
+          {['Stripe','Zelle','Transferencia','Bizum','Cash','Skool Payment','Otro'].map(m=><option key={m}>{m}</option>)}
+        </FS>
+        <FF label="Fecha inicio" val={form.fecha_inicio} onCh={v=>sf('fecha_inicio',v)} type="date"/>
+        <FF label="Fecha fin" val={form.fecha_fin} onCh={v=>sf('fecha_fin',v)} type="date"/>
       </div>
     </ModalShell>
   );
@@ -2892,58 +2874,90 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
 // ─── MODAL UPGRADE ───────────────────────────────────────────────────────────
 const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
   const [planes, setPlanes] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [selCliId, setSelCliId] = useState(cliente?.id || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ plan_id:'', precio_diferencia_eur:0, precio_diferencia_usd:0, comision_banco_eur:0, comision_banco_usd:0, fecha_inicio_nueva:'', fecha_fin_nueva:'' });
-  useEffect(()=>{ window._sb.from('planes').select('id,nombre,precio_eur,precio_usd').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[])); },[]);
+  const [form, setForm] = useState({ plan_id:'', divisa:'EUR', comision:0, fecha_inicio_nueva:HOY_STR(), fecha_fin_nueva:'' });
+  useEffect(()=>{
+    window._sb.from('planes').select('id,nombre,precio_eur,precio_usd,canal').eq('activo',true).order('nombre').then(({data})=>setPlanes(data||[]));
+    if (!cliente) window._sb.from('clientes').select('id,nombre, contratos(id,estado,canal,plan_id,fecha_inicio,fecha_fin,precio_eur,precio_usd,divisa_principal,planes(nombre))').eq('activo',true).order('nombre').then(({data})=>setClientes(data||[]));
+  },[]);
+  const cli = cliente || clientes.find(c=>c.id===selCliId) || null;
+  const ctto = contratoActual || (cli?.contratos?.find(c=>c.estado==='activo') || cli?.contratos?.[0] || null);
   const sf = (k,v) => setForm(f=>({...f,[k]:v}));
-  const SS = FLD_SS;
+  const planNuevo = planes.find(p=>p.id===form.plan_id) || null;
+  const precioEn = (o, div) => o ? (div==='EUR' ? (o.precio_eur||0) : (o.precio_usd||0)) : 0;
+  const precioActual = precioEn(ctto, form.divisa);
+  const precioNuevo = precioEn(planNuevo, form.divisa);
+  const diferencia = Math.max(0, precioNuevo - precioActual);
+  const simbolo = form.divisa==='EUR' ? '€' : '$';
 
   const save = async () => {
+    if (!cli) { setError('Selecciona un cliente.'); return; }
+    if (!form.plan_id) { setError('Selecciona el plan nuevo.'); return; }
     setSaving(true); setError('');
+    const difEur = form.divisa==='EUR' ? diferencia : 0;
+    const difUsd = form.divisa==='USD' ? diferencia : 0;
+    const ceur = form.divisa==='EUR' ? Number(form.comision)||0 : 0;
+    const cusd = form.divisa==='USD' ? Number(form.comision)||0 : 0;
     const { error: err } = await window._sb.from('upgrades').insert({
-      contrato_original_id:contratoActual?.id||null, cliente_id:cliente?.id,
-      plan_nuevo_id:form.plan_id||null,
-      precio_diferencia_eur:Number(form.precio_diferencia_eur)||0,
-      precio_diferencia_usd:Number(form.precio_diferencia_usd)||0,
-      comision_banco_eur:Number(form.comision_banco_eur)||0,
-      comision_banco_usd:Number(form.comision_banco_usd)||0,
-      fecha_inicio_nueva:form.fecha_inicio_nueva||null,
-      fecha_fin_nueva:form.fecha_fin_nueva||null,
+      contrato_original_id:ctto?.id||null, cliente_id:cli.id, plan_nuevo_id:form.plan_id||null,
+      precio_diferencia_eur:difEur, precio_diferencia_usd:difUsd,
+      comision_banco_eur:ceur, comision_banco_usd:cusd,
+      fecha_inicio_nueva:form.fecha_inicio_nueva||null, fecha_fin_nueva:form.fecha_fin_nueva||null,
     });
-    if (!err && contratoActual?.id) {
-      const upd = {};
-      if (form.plan_id) upd.plan_id = form.plan_id;
+    if (err) { setSaving(false); setError(err.message); return; }
+    if (ctto?.id) {
+      const upd = { plan_id: form.plan_id };
       if (form.fecha_fin_nueva) upd.fecha_fin = form.fecha_fin_nueva;
       if (form.fecha_inicio_nueva) upd.fecha_inicio = form.fecha_inicio_nueva;
-      if (Object.keys(upd).length) await window._sb.from('contratos').update(upd).eq('id',contratoActual.id);
+      await window._sb.from('contratos').update(upd).eq('id',ctto.id);
     }
-    setSaving(false);
-    if (err) { setError(err.message); return; }
-    onSaved?.(); onClose();
+    // La diferencia del upgrade es un cobro de este mes
+    if (diferencia > 0) await window._sb.from('pagos').insert({
+      cliente_id:cli.id, contrato_id:ctto?.id||null, fecha:form.fecha_inicio_nueva||HOY_STR(),
+      monto_eur:difEur, monto_usd:difUsd, canal:ctto?.canal||planNuevo?.canal||'ONLINE', concepto:'Upgrade (diferencia)',
+    });
+    setSaving(false); onSaved?.(); onClose();
   };
 
   return (
-    <ModalShell title="Upgrade" italic="de plan" onClose={onClose}
+    <ModalShell title="Upgrade" italic="de plan" onClose={onClose} maxWidth={600}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
-        <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Confirmar upgrade'}</button>
+        <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',cursor:'pointer'}}>{saving?'Guardando…':'Upgrade'}</button>
       </>}
     >
       {error && <div style={{padding:'10px 14px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:8,marginBottom:16,fontSize:13,color:'var(--neg)'}}>{error}</div>}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <div style={{gridColumn:'span 2',display:'flex',flexDirection:'column',gap:6}}>
-          <FLbl t="Plan nuevo"/>
-          <select value={form.plan_id} onChange={e=>sf('plan_id',e.target.value)} style={SS}>
-            <option value="">— Seleccionar plan</option>
+        {!cliente && (
+          <div style={{gridColumn:'span 2'}}>
+            <FS label="Cliente" val={selCliId} onCh={setSelCliId}>
+              <option value="">— Busca y elige el cliente —</option>
+              {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </FS>
+          </div>
+        )}
+        <div style={{gridColumn:'span 2'}}>
+          <FS label="Nuevo plan" val={form.plan_id} onCh={v=>sf('plan_id',v)}>
+            <option value="">— Seleccionar nuevo plan —</option>
             {planes.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
-          </select>
+          </FS>
         </div>
-        <FF label="Diferencia EUR" val={form.precio_diferencia_eur} onCh={v=>sf('precio_diferencia_eur',v)} type="number"/>
-        <FF label="Diferencia USD" val={form.precio_diferencia_usd} onCh={v=>sf('precio_diferencia_usd',v)} type="number"/>
-        <FF label="Comisión banco EUR" val={form.comision_banco_eur} onCh={v=>sf('comision_banco_eur',v)} type="number"/>
-        <FF label="Comisión banco USD" val={form.comision_banco_usd} onCh={v=>sf('comision_banco_usd',v)} type="number"/>
-        <FF label="Nueva fecha inicio" val={form.fecha_inicio_nueva} onCh={v=>sf('fecha_inicio_nueva',v)} type="date"/>
+        <FS label="Divisa del pago" val={form.divisa} onCh={v=>sf('divisa',v)}>
+          <option value="EUR">€ Euro</option>
+          <option value="USD">$ Dólar</option>
+        </FS>
+        <FF label={`Comisión banco (${form.divisa})`} val={form.comision} onCh={v=>sf('comision',v)} type="number"/>
+        {(ctto || planNuevo) && (
+          <div style={{gridColumn:'span 2',padding:'12px 14px',background:'var(--bg-2)',borderRadius:10,fontSize:13,display:'flex',flexDirection:'column',gap:4}}>
+            <div><span style={{color:'var(--ink-faint)'}}>Plan actual: </span><b style={{color:'var(--ink)'}}>{ctto?.planes?.nombre||'—'}</b> · {precioActual}{simbolo}</div>
+            <div><span style={{color:'var(--ink-faint)'}}>Plan nuevo: </span><b style={{color:'var(--ink)'}}>{planNuevo?.nombre||'—'}</b> · {precioNuevo}{simbolo}</div>
+            <div style={{marginTop:4,fontWeight:600,color:'var(--ink)'}}>Diferencia a cobrar: {diferencia}{simbolo}</div>
+          </div>
+        )}
+        <FF label="Fecha inicio (continuación)" val={form.fecha_inicio_nueva} onCh={v=>sf('fecha_inicio_nueva',v)} type="date"/>
         <FF label="Nueva fecha fin" val={form.fecha_fin_nueva} onCh={v=>sf('fecha_fin_nueva',v)} type="date"/>
       </div>
     </ModalShell>
@@ -2952,15 +2966,20 @@ const UpgradeModal = ({ cliente, contratoActual, onClose, onSaved }) => {
 
 // ─── MODAL BAJA ──────────────────────────────────────────────────────────────
 const BajaModal = ({ cliente, contratoActual, onClose, onSaved }) => {
+  const [clientes, setClientes] = useState([]);
+  const [selCliId, setSelCliId] = useState(cliente?.id || '');
   const [motivo, setMotivo] = useState('');
-  const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  useEffect(()=>{ if (!cliente) window._sb.from('clientes').select('id,nombre, contratos(id,estado,planes(nombre))').eq('activo',true).order('nombre').then(({data})=>setClientes(data||[])); },[]);
+  const cli = cliente || clientes.find(c=>c.id===selCliId) || null;
+  const ctto = contratoActual || (cli?.contratos?.find(c=>c.estado==='activo') || cli?.contratos?.[0] || null);
 
   const save = async () => {
+    if (!cli) { setError('Selecciona un cliente.'); return; }
     setSaving(true); setError('');
-    const ops = [window._sb.from('clientes').update({activo:false}).eq('id',cliente?.id)];
-    if (contratoActual?.id) ops.push(window._sb.from('contratos').update({estado:'cancelado',motivo_baja:motivo||null}).eq('id',contratoActual.id));
+    const ops = [window._sb.from('clientes').update({activo:false}).eq('id',cli.id)];
+    if (ctto?.id) ops.push(window._sb.from('contratos').update({estado:'cancelado',motivo_baja:motivo||null}).eq('id',ctto.id));
     const results = await Promise.all(ops);
     const err = results.find(r=>r.error)?.error;
     setSaving(false);
@@ -2972,22 +2991,25 @@ const BajaModal = ({ cliente, contratoActual, onClose, onSaved }) => {
     <ModalShell title="Dar de" italic="baja" onClose={onClose} maxWidth={480}
       footer={<>
         <button className="ghost-btn" onClick={onClose}>Cancelar</button>
-        <button onClick={save} disabled={saving||!confirm} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'#b04425',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',opacity:(saving||!confirm)?0.5:1,cursor:(saving||!confirm)?'not-allowed':'pointer'}}>{saving?'Procesando…':'Confirmar baja'}</button>
+        <button onClick={save} disabled={saving} style={{padding:'10px 18px',fontSize:13,fontWeight:500,borderRadius:8,background:'#b04425',color:'#fff',display:'inline-flex',alignItems:'center',gap:8,border:'none',opacity:saving?0.5:1,cursor:saving?'not-allowed':'pointer'}}>{saving?'Procesando…':'Dar de baja'}</button>
       </>}
     >
       <div style={{padding:'12px 14px',background:'#fbeee8',borderRadius:10,marginBottom:18,fontSize:13,color:'#7a2e18',border:'1px solid #e8c9bd'}}>
-        El cliente quedará inactivo y su contrato se marcará como cancelado. Podrás reactivarlo desde su ficha.
+        El cliente pasará a <b>Inactivos</b> y su contrato se marcará como cancelado. Podrás reactivarlo desde su ficha.
       </div>
       {error && <div style={{padding:'10px 14px',background:'#fdf0ee',border:'1px solid #f5d0c8',borderRadius:8,marginBottom:16,fontSize:13,color:'var(--neg)'}}>{error}</div>}
       <div style={{display:'grid',gap:14}}>
+        {!cliente && (
+          <FS label="Cliente" val={selCliId} onCh={setSelCliId}>
+            <option value="">— Busca y elige el cliente —</option>
+            {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </FS>
+        )}
+        {ctto && <div style={{fontSize:12,color:'var(--ink-faint)'}}>Plan: <b style={{color:'var(--ink)'}}>{ctto?.planes?.nombre||'—'}</b></div>}
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          <span style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)'}}>Motivo de baja</span>
+          <FLbl t="Motivo de la baja"/>
           <textarea value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="¿Por qué se da de baja? (opcional)" style={{padding:'10px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none',fontFamily:'inherit',minHeight:80,resize:'vertical'}}/>
         </div>
-        <label style={{display:'flex',alignItems:'center',gap:10,fontSize:13,color:'var(--ink-dim)',cursor:'pointer'}}>
-          <input type="checkbox" checked={confirm} onChange={e=>setConfirm(e.target.checked)} style={{width:16,height:16,accentColor:'#b04425'}}/>
-          Entiendo que esta acción desactiva al cliente.
-        </label>
       </div>
     </ModalShell>
   );
