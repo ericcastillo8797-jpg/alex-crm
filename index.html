@@ -784,6 +784,17 @@ const revenueInMonth = (c, y, m, field) => {
   return (d0.getFullYear() === y && d0.getMonth() === m) ? v : 0;
 };
 
+// === FACTURACIÓN REAL desde la tabla de pagos ===
+// Cada fila de `pagos` es un cobro real (fecha + importe). Un presencial paga cada mes,
+// así que tiene un pago por mes. La facturación del mes = suma de pagos de ese mes.
+const pagosMes = (pagos, y, m, canal) => (pagos || []).filter(p => {
+  if (canal && p.canal !== canal) return false;
+  const d = p.fecha ? new Date(p.fecha + 'T00:00:00') : null;
+  return d && !isNaN(d) && d.getFullYear() === y && d.getMonth() === m;
+});
+const sumPagosUsd = rows => (rows || []).reduce((s, p) => s + (p.monto_usd || 0) + (p.monto_eur || 0) * 1.08, 0);
+const sumPagosField = (rows, field) => (rows || []).reduce((s, p) => s + (p[field] || 0), 0);
+
 const MonthlyRevenueChart = ({ year }) => {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
@@ -791,15 +802,14 @@ const MonthlyRevenueChart = ({ year }) => {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await window._sb.from('contratos')
-        .select('precio_eur,precio_usd,canal,fecha_inicio,fecha_fin,planes(duracion_meses)');
+      const { data } = await window._sb.from('pagos').select('monto_eur,monto_usd,canal,fecha');
       const rows = data || [];
-      const rev = (c,i) => revenueInMonth(c,year,i,'precio_eur') + revenueInMonth(c,year,i,'precio_usd')*0.92;
+      const eurMes = (cl,i) => sumPagosField(pagosMes(rows,year,i,cl),'monto_eur') + sumPagosField(pagosMes(rows,year,i,cl),'monto_usd')*0.92;
       const byMonth = Array.from({length:12}, (_,i) => ({
-        online:     rows.filter(c=>c.canal==='ONLINE').reduce((s,c)=>s+rev(c,i),0),
-        presencial: rows.filter(c=>c.canal==='PRESENCIAL').reduce((s,c)=>s+rev(c,i),0),
-        skool:      rows.filter(c=>c.canal==='SKOOL').reduce((s,c)=>s+rev(c,i),0),
-        count:      rows.filter(c=>revenueInMonth(c,year,i,'precio_eur')||revenueInMonth(c,year,i,'precio_usd')).length
+        online:     eurMes('ONLINE',i),
+        presencial: eurMes('PRESENCIAL',i),
+        skool:      eurMes('SKOOL',i),
+        count:      pagosMes(rows,year,i).length
       }));
       setMonthData(byMonth);
     };
@@ -868,6 +878,7 @@ const DashboardGeneral = () => {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [clientes, setClientes] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -878,6 +889,8 @@ const DashboardGeneral = () => {
         .from('contratos')
         .select(`*, clientes(nombre, pais), planes(nombre, canal, duracion_meses)`);
       setClientes(data || []);
+      const { data: pg } = await window._sb.from('pagos').select('*, clientes(nombre, pais)');
+      setPagos(pg || []);
       const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal').eq('activo', true);
       setGastos(gs || []);
       setLoading(false);
@@ -885,18 +898,16 @@ const DashboardGeneral = () => {
     fetchData();
   }, []);
   const toUSD = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
-  const factUsdCanal = canal => toUSD(clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c,year,month,'precio_eur'),0), clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c,year,month,'precio_usd'),0));
+  // Facturación = suma de PAGOS REALES del mes (no la fecha de inicio del contrato).
+  const factUsdCanal = canal => sumPagosUsd(pagosMes(pagos, year, month, canal));
   const gastoUsdCanal = canal => gastos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===canal).reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
   const factTotalUsd = factUsdCanal('ONLINE')+factUsdCanal('PRESENCIAL')+factUsdCanal('SKOOL');
   const gastoTotalUsd = gastos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toUSD(g.importe_eur,g.importe_usd),0);
 
-  // Filtrar por mes/año según fecha_inicio del contrato
-  // Clientes que facturan en el mes seleccionado (los mensuales recurren cada mes activo)
-  const filtered = useMemo(() => {
-    return clientes.filter(c => revenueInMonth(c, year, month, 'precio_eur') || revenueInMonth(c, year, month, 'precio_usd'));
-  }, [clientes, year, month]);
+  // Pagos cobrados en el mes seleccionado (cada fila = un cobro real).
+  const filtered = useMemo(() => pagosMes(pagos, year, month), [pagos, year, month]);
 
-  const sumCanal = (canal, field) => clientes.filter(c=>c.canal===canal).reduce((s,c)=>s+revenueInMonth(c, year, month, field),0);
+  const sumCanal = (canal, field) => sumPagosField(pagosMes(pagos, year, month, canal), field === 'precio_eur' ? 'monto_eur' : 'monto_usd');
   const onlineEur = sumCanal('ONLINE','precio_eur');
   const onlineUsd = sumCanal('ONLINE','precio_usd');
   const presencialUsd = sumCanal('PRESENCIAL','precio_usd');
@@ -959,9 +970,9 @@ const DashboardGeneral = () => {
                 <tr>
                   <th style={{width:'28%'}}>Cliente</th>
                   <th>Canal</th>
-                  <th>Fecha inicio</th>
-                  <th style={{textAlign:'right'}}>Precio €</th>
-                  <th style={{textAlign:'right'}}>Precio $</th>
+                  <th>Fecha pago</th>
+                  <th style={{textAlign:'right'}}>Importe €</th>
+                  <th style={{textAlign:'right'}}>Importe $</th>
                   <th style={{textAlign:'right'}}>Total (€)</th>
                 </tr>
               </thead>
@@ -983,18 +994,18 @@ const DashboardGeneral = () => {
                       <span className="sub">{c.clientes?.pais}</span>
                     </td>
                     <td><span className={`chip ${c.canal?.toLowerCase()}`}>{c.canal}</span></td>
-                    <td className="date">{c.fecha_inicio}</td>
-                    <td className={`num ${!c.precio_eur?'zero':''}`}>{fmt(c.precio_eur)}</td>
-                    <td className={`num ${!c.precio_usd?'zero':''}`}>{fmt(c.precio_usd,'$')}</td>
-                    <td className="num">{fmt((c.precio_eur||0)+(c.precio_usd||0)*0.92)}</td>
+                    <td className="date">{c.fecha}</td>
+                    <td className={`num ${!c.monto_eur?'zero':''}`}>{fmt(c.monto_eur)}</td>
+                    <td className={`num ${!c.monto_usd?'zero':''}`}>{fmt(c.monto_usd,'$')}</td>
+                    <td className="num">{fmt((c.monto_eur||0)+(c.monto_usd||0)*0.92)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td>Total</td><td></td><td></td>
-                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.precio_eur||0),0))}</td>
-                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.precio_usd||0),0),'$')}</td>
+                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.monto_eur||0),0))}</td>
+                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.monto_usd||0),0),'$')}</td>
                   <td className="num">{fmt(totalEur + totalUsd*0.92)}</td>
                 </tr>
               </tfoot>
@@ -1049,6 +1060,7 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [allContratos, setAllContratos] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1059,6 +1071,8 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
         .select('cliente_id,precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,planes(duracion_meses)')
         .eq('canal', canal);
       setAllContratos(data || []);
+      const { data: pg } = await window._sb.from('pagos').select('monto_eur,monto_usd,fecha,canal').eq('canal', canal);
+      setPagos(pg || []);
       const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal').eq('activo', true).eq('canal', canal);
       setGastos(gs || []);
       setLoading(false);
@@ -1066,14 +1080,11 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
     fetchData();
   },[canal]);
 
-  // Revenue = contracts whose fecha_inicio falls in the selected year+month
-  // (fecha_inicio = when the client paid/started)
-  const mesContratos = useMemo(() => {
-    return allContratos.filter(c => revenueInMonth(c, year, month, 'precio_eur') || revenueInMonth(c, year, month, 'precio_usd'));
-  }, [allContratos, year, month]);
+  // Facturación del mes = suma de PAGOS REALES de este canal en el mes.
+  const mesContratos = useMemo(() => pagosMes(pagos, year, month, canal), [pagos, year, month, canal]);
 
-  const ingresoEur = allContratos.reduce((s,c)=>s+revenueInMonth(c, year, month, 'precio_eur'),0);
-  const ingresoUsd = allContratos.reduce((s,c)=>s+revenueInMonth(c, year, month, 'precio_usd'),0);
+  const ingresoEur = sumPagosField(mesContratos, 'monto_eur');
+  const ingresoUsd = sumPagosField(mesContratos, 'monto_usd');
 
   // Activos = currently active (estado=activo)
   const activos = allContratos.filter(c=>c.estado==='activo').length;
@@ -1454,26 +1465,46 @@ const PlanificacionTab = () => {
 };
 
 const PagosTab = ({ cliente, contratos }) => {
-  const [renov, setRenov] = useState([]);
-  const [upg, setUpg] = useState([]);
-  useEffect(() => {
-    if (!cliente?.id) return;
-    window._sb.from('renovaciones').select('*, planes(nombre)').eq('cliente_id', cliente.id).then(({ data }) => setRenov(data || []));
-    window._sb.from('upgrades').select('*').eq('cliente_id', cliente.id).then(({ data }) => setUpg(data || []));
-  }, [cliente?.id]);
-  const rows = [
-    ...(contratos || []).map(c => ({ fecha: c.fecha_inicio, tipo: c.estado === 'cancelado' ? 'Baja' : (c.estado === 'inactivo' ? 'Contrato anterior' : 'Alta / Contrato'), detalle: c.planes?.nombre || '—', eur: c.precio_eur, usd: c.precio_usd })),
-    ...renov.map(r => ({ fecha: r.fecha_inicio, tipo: 'Renovación', detalle: r.planes?.nombre || '—', eur: r.precio_eur, usd: r.precio_usd })),
-    ...upg.map(u => ({ fecha: u.fecha_inicio_nueva, tipo: 'Upgrade', detalle: '(diferencia)', eur: u.precio_diferencia_eur, usd: u.precio_diferencia_usd })),
-  ].filter(r => r.fecha).sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+  const IS = { padding: '8px 10px', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' };
+  const [pagos, setPagos] = useState([]);
+  const [nuevo, setNuevo] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const canalCli = (contratos || []).find(c => c.estado === 'activo')?.canal || (contratos || [])[0]?.canal || 'PRESENCIAL';
+  const load = () => { if (!cliente?.id) return; window._sb.from('pagos').select('*').eq('cliente_id', cliente.id).order('fecha', { ascending: false }).then(({ data }) => setPagos(data || [])); };
+  useEffect(() => { load(); }, [cliente?.id]);
+  const hoy = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const guardar = async () => {
+    const p = nuevo; if (!p.fecha) return;
+    if (!(Number(p.monto_eur) || Number(p.monto_usd))) return;
+    setSaving(true);
+    await window._sb.from('pagos').insert({ cliente_id: cliente.id, fecha: p.fecha, monto_eur: Number(p.monto_eur) || 0, monto_usd: Number(p.monto_usd) || 0, canal: p.canal || canalCli, concepto: (p.concepto || '').trim() || 'Pago mensual' });
+    setSaving(false); setNuevo(null); load();
+  };
+  const borrar = async (id) => { if (!window.confirm('¿Eliminar este pago?')) return; await window._sb.from('pagos').delete().eq('id', id); load(); };
+  const totEur = pagos.reduce((s, p) => s + (p.monto_eur || 0), 0);
+  const totUsd = pagos.reduce((s, p) => s + (p.monto_usd || 0), 0);
   return (
     <div className="panel">
-      <div className="panel-head"><h2 className="panel-title">Historial de <span className="italic">pagos</span></h2><span className="panel-sub">{rows.length} movimientos</span></div>
+      <div className="panel-head"><h2 className="panel-title">Pagos <span className="italic">reales</span></h2>
+        <button className="ghost-btn" onClick={() => setNuevo({ fecha: hoy(), monto_eur: 0, monto_usd: 0, canal: canalCli, concepto: '' })}>+ Registrar pago</button>
+      </div>
       <div className="table-wrap">
-        <table className="data-table"><thead><tr><th>Fecha</th><th>Tipo</th><th>Plan</th><th style={{ textAlign: 'right' }}>€</th><th style={{ textAlign: 'right' }}>$</th></tr></thead>
-          <tbody>{rows.length === 0 ? <tr><td colSpan={5} style={{ padding: 36, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin movimientos registrados todavía.</td></tr> : rows.map((r, i) => (
-            <tr key={i}><td className="date">{r.fecha}</td><td>{r.tipo}</td><td className="name">{r.detalle}</td><td className="num">{r.eur ? r.eur + '€' : '—'}</td><td className="num">{r.usd ? '$' + r.usd : '—'}</td></tr>
-          ))}</tbody></table>
+        <table className="data-table"><thead><tr><th>Fecha</th><th>Canal</th><th>Concepto</th><th style={{ textAlign: 'right' }}>€</th><th style={{ textAlign: 'right' }}>$</th><th style={{ width: 60 }}></th></tr></thead>
+          <tbody>
+            {nuevo && <tr>
+              <td><input type="date" style={IS} value={nuevo.fecha} onChange={e => setNuevo({ ...nuevo, fecha: e.target.value })} /></td>
+              <td><select style={IS} value={nuevo.canal} onChange={e => setNuevo({ ...nuevo, canal: e.target.value })}>{['ONLINE','PRESENCIAL','SKOOL'].map(c => <option key={c}>{c}</option>)}</select></td>
+              <td><input style={{ ...IS, width: 130 }} placeholder="Pago mensual" value={nuevo.concepto} onChange={e => setNuevo({ ...nuevo, concepto: e.target.value })} /></td>
+              <td style={{ textAlign: 'right' }}><input style={{ ...IS, width: 70 }} value={nuevo.monto_eur} onChange={e => setNuevo({ ...nuevo, monto_eur: e.target.value })} /></td>
+              <td style={{ textAlign: 'right' }}><input style={{ ...IS, width: 70 }} value={nuevo.monto_usd} onChange={e => setNuevo({ ...nuevo, monto_usd: e.target.value })} /></td>
+              <td style={{ textAlign: 'right' }}><button className="ghost-btn" onClick={guardar} disabled={saving}>{saving ? '…' : 'Guardar'}</button></td>
+            </tr>}
+            {pagos.length === 0 && !nuevo ? <tr><td colSpan={6} style={{ padding: 36, textAlign: 'center', color: 'var(--ink-faint)' }}>Sin pagos registrados todavía.</td></tr> : pagos.map(p => (
+              <tr key={p.id}><td className="date">{p.fecha}</td><td><span className={`chip ${p.canal?.toLowerCase()}`}>{p.canal}</span></td><td>{p.concepto || '—'}</td><td className="num">{p.monto_eur ? p.monto_eur + '€' : '—'}</td><td className="num">{p.monto_usd ? '$' + p.monto_usd : '—'}</td><td style={{ textAlign: 'right' }}><button className="ghost-btn" style={{ color: 'var(--neg)' }} onClick={() => borrar(p.id)}>✕</button></td></tr>
+            ))}
+          </tbody>
+          <tfoot><tr style={{ borderTop: '2px solid var(--line)' }}><td style={{ fontWeight: 600 }}>Total</td><td></td><td></td><td className="num" style={{ fontWeight: 600 }}>{totEur ? totEur + '€' : '—'}</td><td className="num" style={{ fontWeight: 600 }}>{totUsd ? '$' + totUsd : '—'}</td><td></td></tr></tfoot>
+        </table>
       </div>
     </div>
   );
@@ -2335,7 +2366,7 @@ const ComisionesSetters = () => {
 const EconomiaGastos = () => {
   const [gastosFijos, setGastosFijos] = useState([]);
   const [mensual, setMensual] = useState([]);
-  const [contratos, setContratos] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
   const [editGasto, setEditGasto] = useState(null);
@@ -2346,13 +2377,13 @@ const EconomiaGastos = () => {
     const [g, m, c] = await Promise.all([
       window._sb.from('gastos').select('*').eq('activo', true).order('canal').order('concepto'),
       window._sb.from('financiero_mensual').select('*').eq('anio', year).order('mes'),
-      window._sb.from('contratos').select('precio_eur,precio_usd,canal,fecha_inicio')
-        .gte('fecha_inicio', `${year}-01-01`)
-        .lte('fecha_inicio', `${year}-12-31`)
+      window._sb.from('pagos').select('monto_eur,monto_usd,canal,fecha')
+        .gte('fecha', `${year}-01-01`)
+        .lte('fecha', `${year}-12-31`)
     ]);
     setGastosFijos(g.data || []);
     setMensual(m.data || []);
-    setContratos(c.data || []);
+    setPagos(c.data || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, [year]);
@@ -2370,21 +2401,6 @@ const EconomiaGastos = () => {
     await window._sb.from('gastos').delete().eq('id', g.id);
     load();
   };
-
-  // Real facturacion from contracts by canal+mes
-  const factByKey = useMemo(() => {
-    const map = {};
-    contratos.forEach(c => {
-      if (!c.fecha_inicio) return;
-      const d = new Date(c.fecha_inicio);
-      const mes = d.getMonth() + 1;
-      const key = `${c.canal}-${mes}`;
-      if (!map[key]) map[key] = { eur: 0, usd: 0 };
-      map[key].eur += c.precio_eur || 0;
-      map[key].usd += c.precio_usd || 0;
-    });
-    return map;
-  }, [contratos]);
 
   const fijosMensual = gastosFijos.filter(g => g.frecuencia === 'MENSUAL');
   const totalFijoEur = fijosMensual.reduce((s, g) => s + (g.importe_eur || 0), 0);
@@ -2484,7 +2500,7 @@ const EconomiaGastos = () => {
             <tbody>
               {Array.from({length:12},(_,i)=>i).map(i => {
                 const toU=(e,u)=>(Number(u)||0)+(Number(e)||0)*1.08;
-                const factCanal=cl=>contratos.filter(c=>c.canal===cl).reduce((s,c)=>s+revenueInMonth(c,year,i,'precio_eur')*1.08+revenueInMonth(c,year,i,'precio_usd'),0);
+                const factCanal=cl=>sumPagosUsd(pagosMes(pagos,year,i,cl));
                 const gastoCanal=cl=>gastosFijos.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===cl).reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
                 const fact=factCanal('ONLINE')+factCanal('PRESENCIAL')+factCanal('SKOOL');
                 const gasto=gastosFijos.filter(g=>g.frecuencia==='MENSUAL').reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
@@ -2614,6 +2630,12 @@ const NuevoCliente = ({ setRoute }) => {
       if (cont && (ctrt.closer_id || ctrt.porcentaje_comision_closer)) {
         await window._sb.from('contratos').update({ closer_id:ctrt.closer_id||null, porcentaje_comision_closer:Number(ctrt.porcentaje_comision_closer)||null }).eq('id', cont.id);
       }
+      // Registrar el pago inicial (la facturación se calcula desde la tabla de pagos)
+      await window._sb.from('pagos').insert({
+        cliente_id:cd.id, contrato_id:cont?.id||null, fecha:ctrt.fecha_inicio,
+        monto_eur:Number(ctrt.precio_eur)||0, monto_usd:Number(ctrt.precio_usd)||0,
+        canal:ctrt.canal, concepto:'Alta / primer pago',
+      });
     }
     setSaving(false); setRoute('clientes/lista');
   };
@@ -2757,8 +2779,9 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
     setSaving(true); setError('');
     if (contratoActual?.id) await window._sb.from('contratos').update({estado:'inactivo'}).eq('id',contratoActual.id);
     const hoy = new Date(); const fechaPago = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
-    const { error: err } = await window._sb.from('contratos').insert({
-      cliente_id:cliente?.id, plan_id:form.plan_id||null, canal:contratoActual?.canal||form.canal||'ONLINE',
+    const canalR = contratoActual?.canal||form.canal||'ONLINE';
+    const { data: nuevo, error: err } = await window._sb.from('contratos').insert({
+      cliente_id:cliente?.id, plan_id:form.plan_id||null, canal:canalR,
       precio_eur:Number(form.precio_eur)||0, precio_usd:Number(form.precio_usd)||0,
       comision_banco_eur:Number(form.comision_banco_eur)||0, comision_banco_usd:Number(form.comision_banco_usd)||0,
       metodo_pago:form.metodo_pago, divisa_principal:form.divisa_principal,
@@ -2766,9 +2789,15 @@ const RenovarModal = ({ cliente, contratoActual, onClose, onSaved }) => {
       entrenador_id:contratoActual?.entrenador_id||null, setter_id:contratoActual?.setter_id||null,
       porcentaje_comision_setter:contratoActual?.porcentaje_comision_setter||null,
       canal_cierre:contratoActual?.canal_cierre||null,
+    }).select('id').single();
+    if (err) { setSaving(false); setError(err.message); return; }
+    // La renovación es un pago nuevo de ESTE mes
+    await window._sb.from('pagos').insert({
+      cliente_id:cliente?.id, contrato_id:nuevo?.id||null, fecha:fechaPago,
+      monto_eur:Number(form.precio_eur)||0, monto_usd:Number(form.precio_usd)||0,
+      canal:canalR, concepto:'Renovación',
     });
     setSaving(false);
-    if (err) { setError(err.message); return; }
     onSaved?.(); onClose();
   };
 
@@ -3704,11 +3733,14 @@ const FormularioClientes = ({ setRoute }) => {
 
 const MetricsPanel = ({ open, onToggle }) => {
   const [contratos, setContratos] = useState([]);
+  const [pagos, setPagos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [editores, setEditores] = useState([]);
   useEffect(() => { (async () => {
     const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(duracion_meses)');
     setContratos(cs || []);
+    const { data: ps } = await window._sb.from('pagos').select('monto_eur,monto_usd,fecha,canal');
+    setPagos(ps || []);
     const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal');
     setGastos(gs || []);
     const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
@@ -3726,24 +3758,24 @@ const MetricsPanel = ({ open, onToggle }) => {
   const pad = n => String(n).padStart(2, '0');
   const todayStr = `${y}-${pad(mo + 1)}-${pad(now.getDate())}`;
   const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
-  const di = c => c.fecha_inicio ? new Date(c.fecha_inicio) : null;
-  const sumE = arr => arr.reduce((s, c) => s + (c.precio_eur || 0), 0);
-  const sumU = arr => arr.reduce((s, c) => s + (c.precio_usd || 0), 0);
+  const dp = p => p.fecha ? new Date(p.fecha + 'T00:00:00') : null;
+  const sumE = arr => arr.reduce((s, c) => s + (c.monto_eur || 0), 0);
+  const sumU = arr => arr.reduce((s, c) => s + (c.monto_usd || 0), 0);
   const r0 = n => Math.round(n);
 
-  const mesC = contratos.filter(c => revenueInMonth(c, y, mo, 'precio_eur') || revenueInMonth(c, y, mo, 'precio_usd'));
-  const hoyC = contratos.filter(c => c.fecha_inicio === todayStr);
-  const semC = contratos.filter(c => { const d = di(c); return d && d >= weekAgo && d <= now; });
+  const mesC = pagosMes(pagos, y, mo);
+  const hoyC = pagos.filter(p => p.fecha === todayStr);
+  const semC = pagos.filter(p => { const d = dp(p); return d && d >= weekAgo && d <= now; });
   const activos = contratos.filter(c => c.estado === 'activo').length;
-  const mesE = contratos.reduce((s,c)=>s+revenueInMonth(c,y,mo,'precio_eur'),0);
-  const mesU = contratos.reduce((s,c)=>s+revenueInMonth(c,y,mo,'precio_usd'),0);
+  const mesE = sumPagosField(mesC, 'monto_eur');
+  const mesU = sumPagosField(mesC, 'monto_usd');
   const edE = editores.filter(e => e.divisa === 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
   const edU = editores.filter(e => e.divisa !== 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
   const gMesE = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_eur || 0), 0) + edE;
   const gMesU = gastos.filter(g => g.frecuencia === 'MENSUAL').reduce((s, g) => s + (g.importe_usd || 0), 0) + edU;
   const benE = mesE - gMesE, benU = mesU - gMesU;
   const toUSDp = (eur, usd) => (Number(usd) || 0) + (Number(eur) || 0) * 1.08;
-  const factCanal = cl => contratos.filter(c => c.canal === cl).reduce((s, c) => s + revenueInMonth(c, y, mo, 'precio_eur') * 1.08 + revenueInMonth(c, y, mo, 'precio_usd'), 0);
+  const factCanal = cl => sumPagosUsd(pagosMes(pagos, y, mo, cl));
   const gastoCanalP = cl => gastos.filter(g => g.frecuencia === 'MENSUAL' && g.canal === cl).reduce((s, g) => s + toUSDp(g.importe_eur, g.importe_usd), 0);
   const canalRows = [['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => ({ lbl, fact: factCanal(cl), gasto: gastoCanalP(cl) }));
   const totFact = canalRows.reduce((s, r) => s + r.fact, 0);
@@ -3757,7 +3789,7 @@ const MetricsPanel = ({ open, onToggle }) => {
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const last6 = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(y, mo - i, 1); last6.push({ y: d.getFullYear(), m: d.getMonth() }); }
-  const barVals = last6.map(({ y: yy, m: mm }) => contratos.reduce((s, c) => s + revenueInMonth(c, yy, mm, 'precio_eur') + revenueInMonth(c, yy, mm, 'precio_usd'), 0));
+  const barVals = last6.map(({ y: yy, m: mm }) => { const pm = pagosMes(pagos, yy, mm); return sumPagosField(pm, 'monto_eur') + sumPagosField(pm, 'monto_usd'); });
   const maxBar = Math.max(...barVals, 1);
 
   return (
