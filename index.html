@@ -3457,6 +3457,22 @@ const EquipoTabla = ({ tipo }) => {
   const [counts, setCounts] = useState({});
   const [canalCnt, setCanalCnt] = useState({});
   const [loading, setLoading] = useState(true);
+  const [ficha, setFicha] = useState(null);          // entrenador abierto
+  const [fichaCli, setFichaCli] = useState([]);       // clientes asignados
+  const [fichaDir, setFichaDir] = useState('');
+  const [savingDir, setSavingDir] = useState(false);
+  const abrirFicha = async (item) => {
+    setFicha(item); setFichaDir(item.direccion || ''); setFichaCli([]);
+    const { data } = await window._sb.from('contratos')
+      .select('id,canal,estado,fecha_fin,clientes(nombre),planes(nombre)')
+      .or(`entrenador_id.eq.${item.id},entrenador_online_id.eq.${item.id}`).eq('estado','activo');
+    setFichaCli(data || []);
+  };
+  const guardarDir = async () => {
+    if (!ficha) return; setSavingDir(true);
+    await window._sb.from('entrenadores').update({ direccion: fichaDir||null }).eq('id', ficha.id);
+    setSavingDir(false); setItems(prev=>prev.map(i=>i.id===ficha.id?{...i,direccion:fichaDir}:i)); setFicha(f=>f?{...f,direccion:fichaDir}:f);
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [newNombre, setNewNombre] = useState('');
   const [newCoste, setNewCoste] = useState('');
@@ -3544,7 +3560,7 @@ const EquipoTabla = ({ tipo }) => {
                 </td></tr>
               ) : lista.map(item=>(
                 <tr key={item.id}>
-                  <td className="name"><span className="avatar-sm">{initials(item.nombre)}</span>{item.nombre}</td>
+                  <td className="name">{tipo==='entrenadores' ? <button onClick={()=>abrirFicha(item)} style={{display:'inline-flex',alignItems:'center',gap:8,background:'none',border:'none',cursor:'pointer',font:'inherit',color:'var(--ink)',padding:0,textDecoration:'underline',textUnderlineOffset:3}}><span className="avatar-sm">{initials(item.nombre)}</span>{item.nombre}</button> : <><span className="avatar-sm">{initials(item.nombre)}</span>{item.nombre}</>}</td>
                   <td><span className={`chip ${item.activo?'activo':'inactivo'}`}>{item.activo?'Activo':'Inactivo'}</span></td>
                   {tipo==='setters' && <>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{item.comision_chat||0}%</td>
@@ -3595,6 +3611,29 @@ const EquipoTabla = ({ tipo }) => {
         {tablaPanel(online, <>Entrenadores <span className="italic">online</span></>, `${online.filter(i=>i.activo).length} activos`)}
         {tablaPanel(presen, <>Entrenadores <span className="italic">presenciales</span></>, `${presen.filter(i=>i.activo).length} activos`)}
       </>) : tablaPanel(items, <>Miembros <span className="italic">del equipo</span></>, `${items.filter(i=>i.activo).length} activos`)}
+
+      {ficha && (
+        <ModalShell title={ficha.nombre} italic={`· ${ficha.tipo||'online'}`} onClose={()=>setFicha(null)} maxWidth={560}
+          footer={<button className="ghost-btn" onClick={()=>setFicha(null)}>Cerrar</button>}>
+          <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:18}}>
+            <FLbl t="Dirección donde entrena (para enviar a los clientes)"/>
+            <div style={{display:'flex',gap:8}}>
+              <input value={fichaDir} onChange={e=>setFichaDir(e.target.value)} placeholder="Ej. Calle X, gimnasio Y, Miami…" style={{flex:1,padding:'9px 12px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,outline:'none'}}/>
+              <button onClick={guardarDir} disabled={savingDir} style={{padding:'9px 16px',background:'var(--ink)',color:'#fff',borderRadius:8,fontSize:13,fontWeight:500,border:'none',cursor:'pointer'}}>{savingDir?'…':'Guardar'}</button>
+            </div>
+          </div>
+          <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:8}}>Clientes asignados ({fichaCli.length})</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:300,overflowY:'auto'}}>
+            {fichaCli.length===0 ? <div style={{fontSize:13,color:'var(--ink-faint)',padding:'8px 0'}}>Sin clientes activos asignados.</div> : fichaCli.map(c=>(
+              <div key={c.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'var(--bg-1)',borderRadius:8,fontSize:13}}>
+                <span style={{flex:1}}>{c.clientes?.nombre}</span>
+                <span className={`chip ${c.canal?.toLowerCase()}`}>{c.canal}</span>
+                <span style={{fontSize:12,color:'var(--ink-faint)'}}>{c.planes?.nombre||'—'}</span>
+              </div>
+            ))}
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 };
