@@ -1585,6 +1585,15 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [info, setInfo] = useState({ nombre:cliente?.nombre||'', pais:cliente?.pais||'', email:cliente?.email||'', prefijo_telefono:cliente?.prefijo_telefono||'', telefono:cliente?.telefono||'', objetivo:cliente?.objetivo||'', notas:cliente?.notas||'', direccion:cliente?.direccion||'' });
   const [savingInfo, setSavingInfo] = useState(false);
   const [infoMsg, setInfoMsg] = useState('');
+  const [setters, setSetters] = useState([]);
+  const [closers, setClosers] = useState([]);
+  const [venta, setVenta] = useState({ setter_id:'', closer_id:'' });
+  const [savingVenta, setSavingVenta] = useState(false);
+  const [ventaMsg, setVentaMsg] = useState('');
+  useEffect(()=>{
+    window._sb.from('setters').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setSetters(data||[]));
+    window._sb.from('closers').select('id,nombre').eq('activo',true).order('nombre').then(({data})=>setClosers(data||[])).catch(()=>{});
+  },[]);
   const guardarInfo = async () => {
     setSavingInfo(true); setInfoMsg('');
     const { error } = await window._sb.from('clientes').update({
@@ -1605,6 +1614,14 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   }, [cliente]);
 
   useEffect(()=>{ loadContratos(); },[loadContratos]);
+  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'' }); },[contratos]);
+  const guardarVenta = async () => {
+    const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
+    if (!a?.id) { setVentaMsg('Este cliente no tiene contrato.'); return; }
+    setSavingVenta(true); setVentaMsg('');
+    const { error } = await window._sb.from('contratos').update({ setter_id:venta.setter_id||null, closer_id:venta.closer_id||null }).eq('id', a.id);
+    setSavingVenta(false); setVentaMsg(error ? ('Error: '+error.message) : 'Guardado ✓'); if(!error) loadContratos();
+  };
 
   if (!cliente) return (
     <div className="page">
@@ -1680,6 +1697,23 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
                   <textarea value={info.notas} onChange={e=>setInfo(f=>({...f,notas:e.target.value}))} style={{...FLD_IS,minHeight:90,resize:'vertical'}}/>
                 </div>
                 {infoMsg && <div style={{marginTop:12,fontSize:13,color:infoMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{infoMsg}</div>}
+              </div>
+            </div>
+          )}
+
+          {tab==='info' && (
+            <div className="panel" style={{marginTop:20}}>
+              <div className="panel-head">
+                <h2 className="panel-title">Venta <span className="italic">· setter y closer</span></h2>
+                <button onClick={guardarVenta} disabled={savingVenta} style={{padding:'9px 16px',fontSize:13,fontWeight:500,borderRadius:8,background:'var(--ink)',color:'#fff',border:'none',cursor:'pointer'}}>{savingVenta?'Guardando…':'Guardar'}</button>
+              </div>
+              <div className="panel-body">
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+                  <FS label="Setter (quién lo trajo)" val={venta.setter_id} onCh={v=>setVenta(f=>({...f,setter_id:v}))}><option value="">— Ninguno —</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS>
+                  <FS label="Closer (quién cerró la venta)" val={venta.closer_id} onCh={v=>setVenta(f=>({...f,closer_id:v}))}><option value="">— Ninguno —</option>{closers.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</FS>
+                </div>
+                <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Se suma a las comisiones del setter y del closer correspondiente.</div>
+                {ventaMsg && <div style={{marginTop:12,fontSize:13,color:ventaMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{ventaMsg}</div>}
               </div>
             </div>
           )}
@@ -3973,7 +4007,7 @@ const MetricsPanel = () => {
       </div>
       <div className="mp-card">
         <div className="mp-label">Valor de tu hora (presencial)</div>
-        <div className="mp-value">{sesMes > 0 ? r0(valorHora) : '—'}<span className="u">/h</span></div>
+        <div className="mp-value">{sesMes > 0 ? `$${r0(valorHora)}` : '—'}<span className="u">/h</span></div>
         <div className="mp-sub">{sesMes > 0 ? `${sesMes} sesiones/mes · neto tras pagar entrenadores` : 'sin clientes presenciales activos'}</div>
       </div>
       <div className="mp-card mp-wide">
