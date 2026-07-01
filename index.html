@@ -861,6 +861,8 @@ const MonthlyRevenueChart = ({ year }) => {
         const persEnt = cs.filter(c=>c.canal===cl).reduce((s,c)=>s+(c.pago_entrenador_usd||0)*sesionesPlan(c.planes?.nombre),0);
         gc[cl] = fijo + persFijo + persEnt;
       });
+      // Gastos generales (no atribuibles a un canal) — se restan en el total, igual que en General.
+      gc.GENERAL = gs.filter(g=>g.frecuencia==='MENSUAL'&&g.canal==='GENERAL').reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
       setGcanal(gc);
     };
     load();
@@ -895,13 +897,13 @@ const MonthlyRevenueChart = ({ year }) => {
               const i = tt.dataPoints[0].dataIndex; const d = monthData[i]; const g = gcanal;
               const m = v => '$' + Math.round(v);
               const rowsCanal = [['Online', d.online, g.ONLINE], ['Presencial', d.presencial, g.PRESENCIAL], ['Skool', d.skool, g.SKOOL]];
-              const totF = d.online + d.presencial + d.skool, totG = g.ONLINE + g.PRESENCIAL + g.SKOOL;
+              const totF = d.online + d.presencial + d.skool, totG = g.ONLINE + g.PRESENCIAL + g.SKOOL + (g.GENERAL||0);
               const th = 'text-align:right;padding:0 0 3px 10px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8c8a80';
               const td = 'text-align:right;padding:2px 0 2px 10px;font-family:JetBrains Mono,monospace';
               const rowH = ([lbl,f,gg]) => `<tr><td style="padding:2px 0;color:#4a4842">${lbl}</td><td style="${td}">${m(f)}</td><td style="${td};color:#8c8a80">${m(gg)}</td><td style="${td};color:${(f-gg)<0?'#b04425':'#2f7a44'};font-weight:600">${m(f-gg)}</td></tr>`;
               el.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${MONTHS_LONG[i]} ${year}</div>`
                 + `<table style="border-collapse:collapse"><thead><tr><th></th><th style="${th}">Facturación</th><th style="${th}">Gasto</th><th style="${th}">Beneficio</th></tr></thead>`
-                + `<tbody>${rowsCanal.map(rowH).join('')}</tbody>`
+                + `<tbody>${rowsCanal.map(rowH).join('')}${(g.GENERAL||0)>0?`<tr><td style="padding:2px 0;color:#8c8a80">Generales</td><td style="${td}">—</td><td style="${td};color:#8c8a80">${m(g.GENERAL)}</td><td style="${td}">—</td></tr>`:''}</tbody>`
                 + `<tfoot><tr style="font-weight:700"><td style="padding:5px 0 0;border-top:1px solid #e8e6df">Total</td>`
                 + `<td style="${td};padding-top:5px;border-top:1px solid #e8e6df">${m(totF)}</td>`
                 + `<td style="${td};padding-top:5px;border-top:1px solid #e8e6df;color:#8c8a80">${m(totG)}</td>`
@@ -946,7 +948,10 @@ const MonthlyRevenueChart = ({ year }) => {
 };
 
 // ─── PROYECCIONES A FUTURO ────────────────────────────────────────────────────
-const ProyeccionesPanel = ({ contratos }) => {
+const ProyeccionesPanel = () => {
+  const [contratos, setContratos] = useState([]);
+  const [abierto, setAbierto] = useState(false);
+  useEffect(()=>{ window._sb.from('contratos').select('canal,estado,precio_eur,precio_usd,pago_entrenador_usd,planes(nombre)').eq('estado','activo').eq('canal','PRESENCIAL').then(({data})=>setContratos(data||[])); },[]);
   const pres = (contratos||[]).filter(c=>c.canal==='PRESENCIAL' && c.estado==='activo');
   const val = c => (c.precio_usd||0) + (c.precio_eur||0)*1.08;
   const avgPrecio = pres.length ? Math.round(pres.reduce((s,c)=>s+val(c),0)/pres.length) : 800;
@@ -978,8 +983,8 @@ const ProyeccionesPanel = ({ contratos }) => {
 
   return (
     <div className="panel">
-      <div className="panel-head"><h2 className="panel-title" style={{color:'var(--ink)'}}>Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Cuántos entrenadores necesitas y tu techo</span></div>
-      <div className="panel-body">
+      <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
+      {abierto && <div className="panel-body">
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
           <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
           <F label="Horas por sesión (con desplazamiento)" val={horasSesion} set={setHorasSesion}/>
@@ -1008,7 +1013,7 @@ const ProyeccionesPanel = ({ contratos }) => {
           <div><span style={{fontSize:12,color:'var(--ink-faint)'}}>Ganancia proyectada</span> <b style={{fontFamily:'var(--font-mono)',color:gananciaProyectada>=obj?'var(--pos)':'var(--ink)',fontSize:16}}>${Math.round(gananciaProyectada)}/mes</b></div>
         </div>
         <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Con tus horas actuales, tú solo llegas a <b>${Math.round(techoTuyo)}</b>. A partir de ahí, cada entrenador con {cliPorEnt} clientes te suma <b>${Math.round(cliPorEnt*benefPorClienteEnt)}</b> netos y a él le paga <b>${Math.round(ganaEntrenador)}</b>.</div>
-      </div>
+      </div>}
     </div>
   );
 };
@@ -1104,8 +1109,6 @@ const DashboardGeneral = () => {
         <FinanceCard label="Skool" fact={factUsdCanal('SKOOL')} gasto={gastoNegocioCanal('SKOOL')} personal={personalTotalCanal('SKOOL')} count={activeSkool}/>
         <FinanceCard label="Total" fact={factTotalUsd} gasto={gastoNegocioTotal} personal={personalTotal} count={activeOnline+activePresencial+activeSkool}/>
       </div>
-
-      <ProyeccionesPanel contratos={clientes}/>
 
       <MonthlyRevenueChart year={year}/>
 
@@ -4631,6 +4634,7 @@ const App = () => {
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
         <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit} setSelectedCliente={setSelectedCliente}/>
+        {canView && <div style={{padding:'16px 28px 0'}}><ProyeccionesPanel/></div>}
         {renderPage()}
       </main>
       {showPanel && <MetricsPanel/>}
