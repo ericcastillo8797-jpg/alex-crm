@@ -4640,7 +4640,7 @@ const App = () => {
         {canView ? (
           <div style={{display:'flex',alignItems:'flex-start'}}>
             <div style={{flex:'1 1 0',minWidth:0}}>{renderPage()}</div>
-            <aside style={{width:480,flexShrink:0,alignSelf:'stretch',borderLeft:'1px solid var(--line)',position:'sticky',top:0,maxHeight:'100vh',overflowY:'auto',padding:'16px 20px'}}><ProyeccionesPanel/></aside>
+            <aside style={{width:480,flexShrink:0,alignSelf:'flex-start',borderLeft:'1px solid var(--line)',position:'sticky',top:0,height:'100vh',overflowY:'auto',padding:'16px 20px'}}><ProyeccionesPanel/></aside>
           </div>
         ) : renderPage()}
       </main>
