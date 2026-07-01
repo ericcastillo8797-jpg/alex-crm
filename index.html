@@ -836,6 +836,7 @@ const MonthlyRevenueChart = ({ year }) => {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const [monthData, setMonthData] = useState(null);
+  const [gcanal, setGcanal] = useState({ ONLINE:0, PRESENCIAL:0, SKOOL:0 });
 
   useEffect(() => {
     const load = async () => {
@@ -849,6 +850,18 @@ const MonthlyRevenueChart = ({ year }) => {
         count:      pagosMes(rows,year,i).length
       }));
       setMonthData(byMonth);
+      // Gasto mensual por canal = gastos fijos del canal + personal (pago entrenadores + personal imputado). Constante cada mes.
+      const gs = (await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal,imputa_canal').eq('activo',true)).data || [];
+      const cs = (await window._sb.from('contratos').select('canal,estado,pago_entrenador_usd,planes(nombre)').eq('estado','activo')).data || [];
+      const toU = (e,u)=>(u||0)+(e||0)*1.08;
+      const gc = {};
+      ['ONLINE','PRESENCIAL','SKOOL'].forEach(cl=>{
+        const fijo = gs.filter(g=>g.frecuencia==='MENSUAL'&&g.canal===cl).reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
+        const persFijo = gs.filter(g=>g.frecuencia==='MENSUAL'&&g.canal==='PERSONAL'&&g.imputa_canal===cl).reduce((s,g)=>s+toU(g.importe_eur,g.importe_usd),0);
+        const persEnt = cs.filter(c=>c.canal===cl).reduce((s,c)=>s+(c.pago_entrenador_usd||0)*sesionesPlan(c.planes?.nombre),0);
+        gc[cl] = fijo + persFijo + persEnt;
+      });
+      setGcanal(gc);
     };
     load();
   }, [year]);
@@ -873,14 +886,31 @@ const MonthlyRevenueChart = ({ year }) => {
         plugins: {
           legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 }, color: '#4a4842', boxWidth: 10, boxHeight: 10, borderRadius: 3 } },
           tooltip: {
-            mode: 'index', intersect: false,
-            backgroundColor: '#fff', titleColor: '#111110', bodyColor: '#4a4842',
-            borderColor: '#e8e6df', borderWidth: 1, padding: 10,
-            callbacks: {
-              label: c => `  ${c.dataset.label}: $${c.parsed.y.toFixed(0)}`,
-              footer: items => 'Total facturado: $' + items.reduce((s,i)=>s+(i.parsed.y||0),0).toFixed(0)
-            },
-            footerColor: '#111110', footerFont: { weight: '700' }
+            enabled: false,
+            external: (context) => {
+              const tt = context.tooltip;
+              let el = document.getElementById('mrc-tooltip');
+              if (!el) { el = document.createElement('div'); el.id = 'mrc-tooltip'; el.style.cssText = 'position:absolute;pointer-events:none;z-index:1000;background:#fff;border:1px solid #e8e6df;border-radius:10px;box-shadow:0 12px 28px rgba(0,0,0,0.14);padding:10px 12px;font-family:Inter,sans-serif;font-size:11px;transition:opacity .08s;opacity:0;'; document.body.appendChild(el); }
+              if (!tt || tt.opacity === 0 || !tt.dataPoints || !monthData) { el.style.opacity = 0; return; }
+              const i = tt.dataPoints[0].dataIndex; const d = monthData[i]; const g = gcanal;
+              const m = v => '$' + Math.round(v);
+              const rowsCanal = [['Online', d.online, g.ONLINE], ['Presencial', d.presencial, g.PRESENCIAL], ['Skool', d.skool, g.SKOOL]];
+              const totF = d.online + d.presencial + d.skool, totG = g.ONLINE + g.PRESENCIAL + g.SKOOL;
+              const th = 'text-align:right;padding:0 0 3px 10px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8c8a80';
+              const td = 'text-align:right;padding:2px 0 2px 10px;font-family:JetBrains Mono,monospace';
+              const rowH = ([lbl,f,gg]) => `<tr><td style="padding:2px 0;color:#4a4842">${lbl}</td><td style="${td}">${m(f)}</td><td style="${td};color:#8c8a80">${m(gg)}</td><td style="${td};color:${(f-gg)<0?'#b04425':'#2f7a44'};font-weight:600">${m(f-gg)}</td></tr>`;
+              el.innerHTML = `<div style="font-weight:600;margin-bottom:6px">${MONTHS_LONG[i]} ${year}</div>`
+                + `<table style="border-collapse:collapse"><thead><tr><th></th><th style="${th}">Facturación</th><th style="${th}">Gasto</th><th style="${th}">Beneficio</th></tr></thead>`
+                + `<tbody>${rowsCanal.map(rowH).join('')}</tbody>`
+                + `<tfoot><tr style="font-weight:700"><td style="padding:5px 0 0;border-top:1px solid #e8e6df">Total</td>`
+                + `<td style="${td};padding-top:5px;border-top:1px solid #e8e6df">${m(totF)}</td>`
+                + `<td style="${td};padding-top:5px;border-top:1px solid #e8e6df;color:#8c8a80">${m(totG)}</td>`
+                + `<td style="${td};padding-top:5px;border-top:1px solid #e8e6df;color:${(totF-totG)<0?'#b04425':'#2f7a44'}">${m(totF-totG)}</td></tr></tfoot></table>`;
+              const r = context.chart.canvas.getBoundingClientRect();
+              el.style.opacity = 1;
+              el.style.left = (r.left + window.scrollX + tt.caretX + 14) + 'px';
+              el.style.top = (r.top + window.scrollY + tt.caretY - 10) + 'px';
+            }
           }
         },
         scales: {
@@ -890,8 +920,8 @@ const MonthlyRevenueChart = ({ year }) => {
         }
       }
     });
-    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
-  }, [monthData]);
+    return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } const el = document.getElementById('mrc-tooltip'); if (el) el.remove(); };
+  }, [monthData, gcanal]);
 
   const total = monthData ? monthData.reduce((s,d)=>s+d.online+d.presencial+d.skool,0) : 0;
   const bestIdx = monthData ? monthData.reduce((bi,d,i,a)=>(d.online+d.presencial+d.skool)>(a[bi].online+a[bi].presencial+a[bi].skool)?i:bi,0) : -1;
