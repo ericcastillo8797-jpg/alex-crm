@@ -432,6 +432,8 @@ const fmt = (n, cur='€') => {
   const sign = n < 0 ? '-' : '';
   return cur === '€' ? `${sign}${s} €` : `${sign}$${s}`;
 };
+// Número con separador de miles (8006 -> "8.006").
+const nf = n => (Math.round(Number(n)||0)).toLocaleString('es-ES');
 const initials = name => name ? name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() : '?';
 const daysUntil = dateStr => {
   if (!dateStr) return null;
@@ -793,7 +795,7 @@ const CanalMonthlyChart = ({ contratos, year, color }) => {
       <div className="panel-head">
         <h2 className="panel-title">Facturación <span className="italic">mensual {year}</span></h2>
         <span className="panel-sub">
-          {totalYear>0 ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total: ${Math.round(totalYear)}€` : `Sin datos en ${year}`}
+          {totalYear>0 ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total: ${nf(totalYear)}€` : `Sin datos en ${year}`}
         </span>
       </div>
       <div className="panel-body" style={{padding:'16px 20px 20px'}}>
@@ -936,8 +938,8 @@ const MonthlyRevenueChart = ({ year }) => {
         <h2 className="panel-title">Facturación <span className="italic">mensual {year}</span></h2>
         <span className="panel-sub">
           {monthData && bestIdx>=0 && (monthData[bestIdx].online+monthData[bestIdx].presencial+monthData[bestIdx].skool)>0
-            ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total año: $${Math.round(total)}`
-            : `Total año: $${Math.round(total)}`}
+            ? `Mejor mes: ${MONTHS_LONG[bestIdx]} · Total año: $${nf(total)}`
+            : `Total año: $${nf(total)}`}
         </span>
       </div>
       <div className="panel-body" style={{padding:'16px 20px 20px'}}>
@@ -1040,14 +1042,14 @@ const ProyeccionesPanel = () => {
       {abierto && <div className="panel-body">
 
         {seccion('Ahora', 'mismo')}
-        {dato(`Entrenas tú · ${mios.length} clientes`, `$${Math.round(miIngreso)}/mes`)}
-        {dato('Tu ganancia por hora entrenando', miHoras>0?`$${Math.round(miHora)}/hora`:'—', 'var(--pos)')}
+        {dato(`Entrenas tú · ${mios.length} clientes`, `$${nf(miIngreso)}/mes`)}
+        {dato('Tu ganancia por hora entrenando', miHoras>0?`$${nf(miHora)}/hora`:'—', 'var(--pos)')}
         {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses*horasSesion; return (
           <div key={id} style={{marginTop:6,padding:'8px 10px',background:'var(--bg-1)',borderRadius:8}}>
             <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>{nombreEnt(id)} · {e.n} clientes</div>
-            {dato('Le pagas', `$${Math.round(e.pago)}/mes`)}
-            {dato('Te deja a ti (neto)', `$${Math.round(neto)}/mes`, 'var(--pos)')}
-            {dato('Ganas gracias a él', hrs>0?`$${Math.round(neto/hrs)}/hora`:'—', 'var(--pos)')}
+            {dato('Le pagas', `$${nf(e.pago)}/mes`)}
+            {dato('Te deja a ti (neto)', `$${nf(neto)}/mes`, 'var(--pos)')}
+            {dato('Ganas gracias a él', hrs>0?`$${nf(neto/hrs)}/hora`:'—', 'var(--pos)')}
           </div>
         ); })}
         {conEnt.length===0 && <div style={{fontSize:12,color:'var(--ink-faint)'}}>Aún no tienes clientes asignados a un entrenador.</div>}
@@ -1066,24 +1068,24 @@ const ProyeccionesPanel = () => {
         <div style={{marginTop:12,padding:'10px 12px',background:'var(--bg-1)',borderRadius:8}}>
           {dato('Sesiones que te caben (ahora)', `${Math.round(sesDia)}/día · ${Math.round(sesSem)}/sem · ${Math.round(sesMes)}/mes`)}
           {dato(`Clientes máx que llevas tú (${avgSes} ses/cliente)`, `${cliMax}`)}
-          {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}/mes`, 'var(--pos)')}
-          {dato('Cada entrenador te deja neto', `$${Math.round(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
-          {dato('Y a él le pagas', `$${Math.round(ganaEntrenador)}/mes`)}
+          {dato('Tu techo entrenando solo tú', `$${nf(techoTuyo)}/mes`, 'var(--pos)')}
+          {dato('Cada entrenador te deja neto', `$${nf(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
+          {dato('Y a él le pagas', `$${nf(ganaEntrenador)}/mes`)}
         </div>
 
         {seccion('Escenario', 'ideal')}
         <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Si solo quieres entrenar <b>{horasIdeales}h/semana</b>:</div>
         {dato('Clientes que entrenas tú', `${cliIdeal}`)}
-        {dato('Ganas tú entrenando', `$${Math.round(ingresoIdeal)}/mes`, 'var(--pos)')}
+        {dato('Ganas tú entrenando', `$${nf(ingresoIdeal)}/mes`, 'var(--pos)')}
         {dato('Clientes que llevarían entrenadores', `${clientesEntIdeal}`)}
         {dato('Entrenadores que necesitas', `${entrenadoresIdeal}`, 'var(--ink)')}
 
         {seccion('Proyección', 'a futuro')}
         <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Para llegar a <b>${Math.round(obj)}/mes</b>:</div>
-        {dato('Tú llegas (tu techo)', `$${Math.round(techoTuyo)}`)}
+        {dato('Tú llegas (tu techo)', `$${nf(techoTuyo)}`)}
         {dato('Clientes que faltan (entrenadores)', `${clientesEnt}`)}
         {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
-        {dato('Ganancia proyectada', `$${Math.round(gananciaProyectada)}/mes`, gananciaProyectada>=obj?'var(--pos)':'var(--ink)')}
+        {dato('Ganancia proyectada', `$${nf(gananciaProyectada)}/mes`, gananciaProyectada>=obj?'var(--pos)':'var(--ink)')}
         <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)',lineHeight:1.5}}>La rueda: cada entrenador con {cliPorEnt} clientes te deja <b>${Math.round(miNetoPorEntrenador)}</b> netos (a él le pagas ${Math.round(ganaEntrenador)}). Ese excedente financia al siguiente entrenador.</div>
       </div>}
     </div>
@@ -1345,13 +1347,13 @@ const DashboardCanal = ({ canal, nombre, eyebrow }) => {
       {loading ? <div className="loading">Cargando…</div> : (
         <>
           <div className="kpi-grid">
-            <KpiCard label="Facturación $" value={`$${Math.round(factMesUsd)}`} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
-            <KpiCard label="Gastos $" value={`$${Math.round(gastoMes)}`} unit="" icon="money" sub="Gastos fijos/mes"/>
-            <KpiCard label="Beneficio $" value={`$${Math.round(beneficioMes)}`} unit="" icon="up" sub={beneficioMes<0?'en negativo':'este mes'}/>
+            <KpiCard label="Facturación $" value={`$${nf(factMesUsd)}`} unit="" icon="money" sub={`Cobrado en ${MONTHS_LONG[month]}`}/>
+            <KpiCard label="Gastos $" value={`$${nf(gastoMes)}`} unit="" icon="money" sub="Gastos fijos/mes"/>
+            <KpiCard label="Beneficio $" value={`$${nf(beneficioMes)}`} unit="" icon="up" sub={beneficioMes<0?'en negativo':'este mes'}/>
             <KpiCard label="Clientes activos" value={data.activos} unit="" icon="users" sub={`${data.inactivos} de baja`}/>
           </div>
           <div className="kpi-grid">
-            <KpiCard label="LTV medio" value={`$${Math.round(ltvMedio)}`} unit="" icon="calendar" sub="Ingreso medio por cliente"/>
+            <KpiCard label="LTV medio" value={`$${nf(ltvMedio)}`} unit="" icon="calendar" sub="Ingreso medio por cliente"/>
             <KpiCard label="Retención" value={`${retencion}%`} unit="" icon="check" sub={`${activosUnicos}/${clientesUnicos} siguen activos`}/>
             <KpiCard label="Ticket medio $" value={ticketMedioUsd>0?fmt(ticketMedioUsd,'$'):'—'} unit="" icon="up" sub={`${mesContratos.length} pagos este mes`}/>
             <KpiCard label="Clientes totales" value={clientesUnicos} unit="" icon="users" sub="Histórico"/>
@@ -1513,7 +1515,7 @@ const ClientesLista = ({ setRoute, setSelectedCliente }) => {
                         </select> : '—'}
                       </td>
                       <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{precio}</td>
-                      <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{(()=>{ const ph = (contrato&&contrato.canal==='PRESENCIAL') ? precioHoraCliente(contrato) : null; return ph!=null ? (contrato.divisa_principal==='USD'?`$${Math.round(ph)}`:`${Math.round(ph)}€`) : '—'; })()}</td>
+                      <td style={{textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12}}>{(()=>{ const ph = (contrato&&contrato.canal==='PRESENCIAL') ? precioHoraCliente(contrato) : null; return ph!=null ? (contrato.divisa_principal==='USD'?`$${nf(ph)}`:`${nf(ph)}€`) : '—'; })()}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_inicio||'—'}</td>
                       <td className="date" style={{fontSize:12}}>{contrato?.fecha_fin||'—'}</td>
                       <td style={{textAlign:'right'}}>
@@ -2400,7 +2402,7 @@ const EconomiaFacturacion = () => {
 
       <div className="kpi-grid">
         <KpiCard label="Facturación EUR" value={fmt(totalEur)} unit="" icon="money" sub={`Cobrado en ${etq}`}/>
-        <KpiCard label="Facturación USD" value={`$${Math.round(totalUsd)}`} unit="" icon="money" sub={`Cobrado en ${etq}`}/>
+        <KpiCard label="Facturación USD" value={`$${nf(totalUsd)}`} unit="" icon="money" sub={`Cobrado en ${etq}`}/>
         <KpiCard label="Nº pagos" value={mesPagos.length} unit="" icon="users" sub={etq}/>
         <KpiCard label="Pago medio" value={mesPagos.length ? fmt((totalEur + totalUsd*0.92)/mesPagos.length) : '—'} unit="" icon="up" sub="Convertido a EUR"/>
       </div>
@@ -2427,9 +2429,9 @@ const EconomiaFacturacion = () => {
                   <tr key={m.mes}>
                     <td style={{fontWeight:500}}>{MONTHS_LONG[m.mes]}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumEur(m.online)>0?fmt(sumEur(m.online)):'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.online)>0?`$${Math.round(sumUsd(m.online))}`:'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.presencial)>0?`$${Math.round(sumUsd(m.presencial))}`:'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.skool)>0?`$${Math.round(sumUsd(m.skool))}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.online)>0?`$${nf(sumUsd(m.online))}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.presencial)>0?`$${nf(sumUsd(m.presencial))}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',color:'var(--pos)'}}>{sumUsd(m.skool)>0?`$${nf(sumUsd(m.skool))}`:'—'}</td>
                     <td style={{textAlign:'right'}}>{m.online.length+m.presencial.length+m.skool.length}</td>
                   </tr>
                 ))}
@@ -2450,7 +2452,7 @@ const EconomiaFacturacion = () => {
                   <tr key={a} onClick={()=>setYear(a)} style={{cursor:'pointer',background:a===year?'var(--bg-1)':undefined}}>
                     <td style={{fontWeight:600}}>{a}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.eur>0?fmt(d.eur):'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.usd>0?`$${Math.round(d.usd)}`:'—'}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.usd>0?`$${nf(d.usd)}`:'—'}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--pos)'}}>${Math.round(d.usd + d.eur*1.08)}</td>
                     <td style={{textAlign:'right'}}>{d.n}</td>
                   </tr>
@@ -4256,7 +4258,7 @@ const MetricsPanel = () => {
   const dp = p => p.fecha ? new Date(p.fecha + 'T00:00:00') : null;
   const sumE = arr => arr.reduce((s, c) => s + (c.monto_eur || 0), 0);
   const sumU = arr => arr.reduce((s, c) => s + (c.monto_usd || 0), 0);
-  const r0 = n => Math.round(n);
+  const r0 = n => nf(n);
 
   const mesC = pagosMes(pagos, y, mo);
   const hoyC = pagos.filter(p => p.fecha === todayStr);
@@ -4427,8 +4429,8 @@ const SesionesPresenciales = () => {
         </div></div>
       ) : (<>
         <div className="kpi-grid">
-          <KpiCard label="A pagar esta semana" value={`$${Math.round(semPagado)}`} unit="" icon="money" sub="Sesiones registradas (7 días)"/>
-          <KpiCard label="A pagar este mes" value={`$${Math.round(mesPagado)}`} unit="" icon="money" sub={MONTHS_LONG[now.getMonth()]}/>
+          <KpiCard label="A pagar esta semana" value={`$${nf(semPagado)}`} unit="" icon="money" sub="Sesiones registradas (7 días)"/>
+          <KpiCard label="A pagar este mes" value={`$${nf(mesPagado)}`} unit="" icon="money" sub={MONTHS_LONG[now.getMonth()]}/>
           <KpiCard label="Clientes presenciales" value={contratos.length} unit="" icon="users" sub="activos"/>
         </div>
 
