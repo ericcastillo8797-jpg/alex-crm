@@ -704,7 +704,7 @@ const KpiCard = ({ label, value, unit, sub, icon, neg }) => (
 // ─── DUAL KPI CARD ────────────────────────────────────────────────────────────
 const FinanceCard = ({ label, fact, gasto, personal=0, count }) => {
   const benef = fact - gasto - personal;
-  const row = (t, v, col) => <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span style={{ color: 'var(--ink-faint)' }}>{t}</span><b style={{ fontFamily: 'var(--font-mono)', color: col || 'var(--ink)' }}>${Math.round(v)}</b></div>;
+  const row = (t, v, col) => <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}><span style={{ color: 'var(--ink-faint)' }}>{t}</span><b style={{ fontFamily: 'var(--font-mono)', color: col || 'var(--ink)' }}>${nf(v)}</b></div>;
   return (
     <div className="kpi">
       <div>
@@ -725,7 +725,7 @@ const DualKpiCard = ({ label, eur, usd, count, icon }) => (
   <div className="kpi">
     <div>
       <div className="kpi-label">{icon && <Icon name={icon} size={12} className="icon"/>}<span>{label}</span></div>
-      <div className="kpi-value">${Math.round(usd)}</div>
+      <div className="kpi-value">${nf(usd)}</div>
       <div style={{fontFamily:'var(--font-mono)',fontSize:15,color:'var(--ink-faint)',marginTop:3,letterSpacing:'-0.01em'}}>{fmt(eur)}</div>
     </div>
     <div className="kpi-foot"><span>—</span>{count != null && <span className="kpi-sub">{count} clientes</span>}</div>
@@ -1038,7 +1038,7 @@ const ProyeccionesPanel = () => {
 
   return (
     <div className="panel">
-      <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
+      <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${nf(obj)} · proyectado ${nf(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
       {abierto && <div className="panel-body">
 
         {seccion('Ahora', 'mismo')}
@@ -1066,7 +1066,7 @@ const ProyeccionesPanel = () => {
           <ProyF label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
         </div>
         <div style={{marginTop:12,padding:'10px 12px',background:'var(--bg-1)',borderRadius:8}}>
-          {dato('Sesiones que te caben (ahora)', `${Math.round(sesDia)}/día · ${Math.round(sesSem)}/sem · ${Math.round(sesMes)}/mes`)}
+          {dato('Sesiones que te caben (ahora)', `${nf(sesDia)}/día · ${nf(sesSem)}/sem · ${nf(sesMes)}/mes`)}
           {dato(`Clientes máx que llevas tú (${avgSes} ses/cliente)`, `${cliMax}`)}
           {dato('Tu techo entrenando solo tú', `$${nf(techoTuyo)}/mes`, 'var(--pos)')}
           {dato('Cada entrenador te deja neto', `$${nf(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
@@ -1081,12 +1081,12 @@ const ProyeccionesPanel = () => {
         {dato('Entrenadores que necesitas', `${entrenadoresIdeal}`, 'var(--ink)')}
 
         {seccion('Proyección', 'a futuro')}
-        <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Para llegar a <b>${Math.round(obj)}/mes</b>:</div>
+        <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Para llegar a <b>${nf(obj)}/mes</b>:</div>
         {dato('Tú llegas (tu techo)', `$${nf(techoTuyo)}`)}
         {dato('Clientes que faltan (entrenadores)', `${clientesEnt}`)}
         {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
         {dato('Ganancia proyectada', `$${nf(gananciaProyectada)}/mes`, gananciaProyectada>=obj?'var(--pos)':'var(--ink)')}
-        <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)',lineHeight:1.5}}>La rueda: cada entrenador con {cliPorEnt} clientes te deja <b>${Math.round(miNetoPorEntrenador)}</b> netos (a él le pagas ${Math.round(ganaEntrenador)}). Ese excedente financia al siguiente entrenador.</div>
+        <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)',lineHeight:1.5}}>La rueda: cada entrenador con {cliPorEnt} clientes te deja <b>${nf(miNetoPorEntrenador)}</b> netos (a él le pagas ${nf(ganaEntrenador)}). Ese excedente financia al siguiente entrenador.</div>
       </div>}
     </div>
   );
@@ -1243,15 +1243,15 @@ const DashboardGeneral = () => {
               </div>
               <div className="mini-item">
                 <span className="lbl"><span className="dot" style={{background:'var(--stone-light)'}}/> Presencial</span>
-                <span className="val">{fmt(presencialEur)} · <span style={{color:'var(--ink-faint)'}}>${Math.round(presencialUsd)}</span></span>
+                <span className="val">{fmt(presencialEur)} · <span style={{color:'var(--ink-faint)'}}>${nf(presencialUsd)}</span></span>
               </div>
               <div className="mini-item">
                 <span className="lbl"><span className="dot" style={{background:'#e29481'}}/> Skool</span>
-                <span className="val">{fmt(skoolEur)} · <span style={{color:'var(--ink-faint)'}}>${Math.round(skoolUsd)}</span></span>
+                <span className="val">{fmt(skoolEur)} · <span style={{color:'var(--ink-faint)'}}>${nf(skoolUsd)}</span></span>
               </div>
               <div className="mini-item">
                 <span className="lbl" style={{color:'var(--stone-light)', fontWeight:500}}>Total</span>
-                <span className="val" style={{color:'var(--stone-light)'}}>{fmt(totalEur)} · <span style={{color:'var(--ink-faint)'}}>${Math.round(totalUsd)}</span></span>
+                <span className="val" style={{color:'var(--stone-light)'}}>{fmt(totalEur)} · <span style={{color:'var(--ink-faint)'}}>${nf(totalUsd)}</span></span>
               </div>
             </div>
           </div>
@@ -2120,7 +2120,7 @@ const EtiquetasClientes = () => {
                 <tr key={r.id}>
                   <td><span style={{display:'inline-block',width:24,height:24,borderRadius:6,background:r.color,border:'1px solid rgba(0,0,0,0.12)'}}/></td>
                   <td style={{fontWeight:600}}>{r.nombre}</td>
-                  <td>≤ {r.dias} días{r.dias>=30?` (~${Math.round(r.dias/30)} mes${r.dias>=60?'es':''})`:''}{r.dias<=0?' · incluye vencidos':''}</td>
+                  <td>≤ {r.dias} días{r.dias>=30?` (~${nf(r.dias/30)} mes${r.dias>=60?'es':''})`:''}{r.dias<=0?' · incluye vencidos':''}</td>
                   <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                     <button className="ghost-btn" style={{padding:'4px 8px',marginRight:4}} onClick={()=>setEdit({...r})}>Editar</button>
                     <button className="ghost-btn" style={{padding:'4px 8px'}} onClick={()=>borrar(r)}>Borrar</button>
@@ -2453,7 +2453,7 @@ const EconomiaFacturacion = () => {
                     <td style={{fontWeight:600}}>{a}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.eur>0?fmt(d.eur):'—'}</td>
                     <td style={{textAlign:'right',fontFamily:'var(--font-mono)'}}>{d.usd>0?`$${nf(d.usd)}`:'—'}</td>
-                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--pos)'}}>${Math.round(d.usd + d.eur*1.08)}</td>
+                    <td style={{textAlign:'right',fontFamily:'var(--font-mono)',fontWeight:600,color:'var(--pos)'}}>${nf(d.usd + d.eur*1.08)}</td>
                     <td style={{textAlign:'right'}}>{d.n}</td>
                   </tr>
                 ); })}
@@ -2863,20 +2863,20 @@ const EconomiaGastos = () => {
               <div key={i} style={{borderBottom:'1px solid var(--line)'}}>
                 <div onClick={()=>setOpenMonth(open?null:i)} style={{cursor:'pointer',display:'flex',alignItems:'center',gap:8,padding:'10px 16px',background:open?'var(--bg-1)':undefined}}>
                   <span style={{flex:1,fontWeight:600,fontSize:13}}>{open?'▾':'▸'} {MONTHS_LONG[i]}</span>
-                  <span style={{fontFamily:'var(--font-mono)',fontSize:13,fontWeight:600,color:benef<0?'var(--neg)':'var(--pos)'}}>${Math.round(benef)}</span>
+                  <span style={{fontFamily:'var(--font-mono)',fontSize:13,fontWeight:600,color:benef<0?'var(--neg)':'var(--pos)'}}>${nf(benef)}</span>
                 </div>
                 {open && (
                   <div style={{padding:'8px 14px 12px',background:'var(--bg-1)',display:'flex',flexDirection:'column',gap:8}}>
                     <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--ink-faint)',fontFamily:'var(--font-mono)'}}>
-                      <span>Facturación ${Math.round(fact)}</span><span>Gastos ${Math.round(gasto)}</span>
+                      <span>Facturación ${nf(fact)}</span><span>Gastos ${nf(gasto)}</span>
                     </div>
                     {['ONLINE','PRESENCIAL','SKOOL'].map(cl=>{ const f=factCanal(cl), g=gastoCanal(cl), b=f-g; return (
                       <div key={cl} style={{display:'flex',alignItems:'center',gap:8}}>
                         <span className={`chip ${cl.toLowerCase()}`} style={{minWidth:74,textAlign:'center'}}>{cl}</span>
                         <div style={{flex:1,display:'flex',justifyContent:'space-between',fontSize:11,fontFamily:'var(--font-mono)'}}>
-                          <span style={{color:'var(--ink-faint)'}}>F ${Math.round(f)}</span>
-                          <span style={{color:'var(--ink-faint)'}}>G ${Math.round(g)}</span>
-                          <span style={{color:b<0?'var(--neg)':'var(--pos)',fontWeight:600}}>B ${Math.round(b)}</span>
+                          <span style={{color:'var(--ink-faint)'}}>F ${nf(f)}</span>
+                          <span style={{color:'var(--ink-faint)'}}>G ${nf(g)}</span>
+                          <span style={{color:b<0?'var(--neg)':'var(--pos)',fontWeight:600}}>B ${nf(b)}</span>
                         </div>
                       </div>
                     ); })}
@@ -4343,23 +4343,23 @@ const MetricsPanel = () => {
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', paddingBottom: 4 }}><span style={{ flex: 1 }}></span><span style={{ width: 64, textAlign: 'right' }}>Fact.</span><span style={{ width: 56, textAlign: 'right' }}>Gastos</span><span style={{ width: 64, textAlign: 'right' }}>Benef.</span></div>
           {canalRows.map(r => { const b = r.fact - r.gasto - r.personal; return (
-            <div key={r.lbl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{r.lbl}</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(r.fact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(r.gasto)}</span><span style={{ width: 64, textAlign: 'right', color: b < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(b)}</span></div>
+            <div key={r.lbl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{r.lbl}</span><span style={{ width: 64, textAlign: 'right' }}>${nf(r.fact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${nf(r.gasto)}</span><span style={{ width: 64, textAlign: 'right', color: b < 0 ? 'var(--neg)' : 'var(--pos)' }}>${nf(b)}</span></div>
           ); })}
           <div style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', padding: '8px 0 2px', marginTop: 4, borderTop: '1px dashed var(--line)' }}>Gasto en personal</div>
           {[['Online', 'ONLINE'], ['Presencial', 'PRESENCIAL'], ['Skool', 'SKOOL']].map(([lbl, cl]) => { const p = personalP(cl); if (!p) return null; return (
-            <div key={cl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{lbl}</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(p)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
+            <div key={cl} style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0' }}><span style={{ flex: 1, color: 'var(--ink-dim)' }}>{lbl}</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${nf(p)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
           ); })}
-          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', fontWeight: 600 }}><span style={{ flex: 1 }}>Personal total</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
-          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totNegocio + totPersonal)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totNegocio - totPersonal) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totNegocio - totPersonal)}</span></div>
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', fontWeight: 600 }}><span style={{ flex: 1 }}>Personal total</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${nf(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
+          <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${nf(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${nf(totNegocio + totPersonal)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totNegocio - totPersonal) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${nf(totFact - totNegocio - totPersonal)}</span></div>
         </div>
       </div>
       <div className="mp-card mp-wide">
         <div className="mp-label">Pago a entrenadores · {meses[mo]}</div>
         <div style={{ marginTop: 6 }}>
           {entrenadores.length===0 ? <div style={{fontSize:11,color:'var(--ink-faint)'}}>Sin entrenadores.</div> : entrenadores.map(e=>{ const v=pagoEntrenadorMes(e); return (
-            <div key={e.id} style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'3px 0' }}><span style={{flex:1,color:'var(--ink-dim)'}}>{e.nombre} <span style={{color:'var(--ink-faint)'}}>({e.tipo||'online'})</span></span><span style={{color:'var(--neg)'}}>${Math.round(v)}</span></div>
+            <div key={e.id} style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'3px 0' }}><span style={{flex:1,color:'var(--ink-dim)'}}>{e.nombre} <span style={{color:'var(--ink-faint)'}}>({e.tipo||'online'})</span></span><span style={{color:'var(--neg)'}}>${nf(v)}</span></div>
           ); })}
-          <div style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'6px 0 0', marginTop:4, borderTop:'1px solid var(--line)', fontWeight:600 }}><span style={{flex:1}}>Total</span><span>${Math.round(entrenadores.reduce((s,e)=>s+pagoEntrenadorMes(e),0))}</span></div>
+          <div style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'6px 0 0', marginTop:4, borderTop:'1px solid var(--line)', fontWeight:600 }}><span style={{flex:1}}>Total</span><span>${nf(entrenadores.reduce((s,e)=>s+pagoEntrenadorMes(e),0))}</span></div>
         </div>
       </div>
       <div className="mp-card mp-wide">
