@@ -987,11 +987,12 @@ const ProyeccionesPanel = () => {
   const [precioCliente, setPrecioCliente] = useState(cfg.precioCliente ?? 800);
   const [pagoSesion, setPagoSesion] = useState(cfg.pagoSesion ?? 50);   // lo que pagas al entrenador POR SESIÓN
   const [cliPorEnt, setCliPorEnt] = useState(cfg.cliPorEnt ?? 8);
+  const [horasIdeales, setHorasIdeales] = useState(cfg.horasIdeales ?? 10);   // horas/semana que TE GUSTARÍA trabajar
   useEffect(()=>{ if(cfg.precioCliente==null && avgPrecio) setPrecioCliente(avgPrecio); }, [avgPrecio]);
-  useEffect(()=>{ try { localStorage.setItem('af_proy', JSON.stringify({obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt})); } catch(e){} }, [obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt]);
+  useEffect(()=>{ try { localStorage.setItem('af_proy', JSON.stringify({obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt,horasIdeales})); } catch(e){} }, [obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt,horasIdeales]);
 
   const dato = (t, v, col) => <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'4px 0'}}><span style={{color:'var(--ink-dim)'}}>{t}</span><b style={{fontFamily:'var(--font-mono)',color:col||'var(--ink)'}}>{v}</b></div>;
-  const seccion = t => <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',margin:'18px 0 8px'}}>{t}</div>;
+  const seccion = (a, b) => <div style={{fontFamily:'var(--font-serif)',fontSize:19,color:'var(--ink)',margin:'22px 0 10px'}}>{a} <span style={{fontStyle:'italic',color:'var(--stone-muted)'}}>{b}</span></div>;
 
   // ── AHORA MISMO (desde los datos reales) ──
   const nombreEnt = id => entrenadores.find(e=>e.id===id)?.nombre || 'Entrenador';
@@ -1026,12 +1027,19 @@ const ProyeccionesPanel = () => {
   const entrenadoresNec = cliPorEnt>0 ? Math.ceil(clientesEnt/cliPorEnt) : 0;
   const gananciaProyectada = techoTuyo + clientesEnt*benefClienteEnt;
 
+  // ── ESCENARIO IDEAL (las horas que TE GUSTARÍA trabajar) ──
+  const cliIdeal = horasClienteMes>0 ? Math.floor((horasIdeales*4.33)/horasClienteMes) : 0;   // clientes que entrenarías tú
+  const ingresoIdeal = cliIdeal * precioCliente;
+  const restanteIdeal = Math.max(0, obj - ingresoIdeal);
+  const clientesEntIdeal = benefClienteEnt>0 ? Math.ceil(restanteIdeal/benefClienteEnt) : 0;
+  const entrenadoresIdeal = cliPorEnt>0 ? Math.ceil(clientesEntIdeal/cliPorEnt) : 0;
+
   return (
     <div className="panel">
       <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
       {abierto && <div className="panel-body">
 
-        {seccion('📍 Dónde estás ahora (presencial)')}
+        {seccion('Ahora', 'mismo')}
         {dato(`Entrenas tú · ${mios.length} clientes`, `$${Math.round(miIngreso)}/mes`)}
         {dato('Tu ganancia por hora entrenando', miHoras>0?`$${Math.round(miHora)}/hora`:'—', 'var(--pos)')}
         {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses*horasSesion; return (
@@ -1044,28 +1052,34 @@ const ProyeccionesPanel = () => {
         ); })}
         {conEnt.length===0 && <div style={{fontSize:12,color:'var(--ink-faint)'}}>Aún no tienes clientes asignados a un entrenador.</div>}
 
-        {seccion('⚙️ Datos (los cambias tú)')}
+        {seccion('Tus', 'datos')}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
           <ProyF label="Horas por sesión (incluye ida y vuelta)" val={horasSesion} set={setHorasSesion} step={0.5}/>
-          <ProyF label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
+          <ProyF label="Horas que trabajas / semana (ahora)" val={horasSemana} set={setHorasSemana}/>
+          <ProyF label="Horas que TE GUSTARÍA trabajar / semana" val={horasIdeales} set={setHorasIdeales}/>
           <ProyF label="Días que trabajas / semana" val={diasSemana} set={setDiasSemana}/>
           <ProyF label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
           <ProyF label="Pago al entrenador por sesión ($)" val={pagoSesion} set={setPagoSesion}/>
+          <ProyF label="Clientes por entrenador" val={cliPorEnt} set={setCliPorEnt}/>
           <ProyF label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
         </div>
+        <div style={{marginTop:12,padding:'10px 12px',background:'var(--bg-1)',borderRadius:8}}>
+          {dato('Sesiones que te caben (ahora)', `${Math.round(sesDia)}/día · ${Math.round(sesSem)}/sem · ${Math.round(sesMes)}/mes`)}
+          {dato(`Clientes máx que llevas tú (${avgSes} ses/cliente)`, `${cliMax}`)}
+          {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}/mes`, 'var(--pos)')}
+          {dato('Cada entrenador te deja neto', `$${Math.round(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
+          {dato('Y a él le pagas', `$${Math.round(ganaEntrenador)}/mes`)}
+        </div>
 
-        {seccion('🏋️ Tu límite entrenando TÚ')}
-        {dato('Sesiones que te caben', `${Math.round(sesDia)}/día · ${Math.round(sesSem)}/sem · ${Math.round(sesMes)}/mes`)}
-        {dato(`Clientes máx que puedes llevar (${avgSes} ses/cliente)`, `${cliMax}`)}
-        {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}/mes`, 'var(--pos)')}
+        {seccion('Escenario', 'ideal')}
+        <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Si solo quieres entrenar <b>{horasIdeales}h/semana</b>:</div>
+        {dato('Clientes que entrenas tú', `${cliIdeal}`)}
+        {dato('Ganas tú entrenando', `$${Math.round(ingresoIdeal)}/mes`, 'var(--pos)')}
+        {dato('Clientes que llevarían entrenadores', `${clientesEntIdeal}`)}
+        {dato('Entrenadores que necesitas', `${entrenadoresIdeal}`, 'var(--ink)')}
 
-        {seccion('👥 Con un entrenador')}
-        {dato('Clientes por entrenador', `${cliPorEnt}`)}
-        {dato('El entrenador gana', `$${Math.round(ganaEntrenador)}/mes`)}
-        {dato('Te deja a ti (neto)', `$${Math.round(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
-        {dato('Margen para ti por su hora', `$${Math.round(miMargenHora)}/hora`, 'var(--pos)')}
-
-        {seccion(`🚀 Proyección para $${Math.round(obj)}/mes`)}
+        {seccion('Proyección', 'a futuro')}
+        <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:6}}>Para llegar a <b>${Math.round(obj)}/mes</b>:</div>
         {dato('Tú llegas (tu techo)', `$${Math.round(techoTuyo)}`)}
         {dato('Clientes que faltan (entrenadores)', `${clientesEnt}`)}
         {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
