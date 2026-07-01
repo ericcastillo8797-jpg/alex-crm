@@ -999,12 +999,14 @@ const ProyeccionesPanel = () => {
 
   // ── AHORA MISMO (desde los datos reales) ──
   const nombreEnt = id => entrenadores.find(e=>e.id===id)?.nombre || 'Entrenador';
-  const mios = pres.filter(c=>!c.entrenador_id);
+  const alexId = entrenadores.find(e=>/alex/i.test(e.nombre||''))?.id;   // Alex = el dueño ("tú")
+  const esMio = c => !c.entrenador_id || c.entrenador_id===alexId;
+  const mios = pres.filter(esMio);
   const miIngreso = mios.reduce((s,c)=>s+val(c),0);
   const miSes = mios.reduce((s,c)=>s+ses(c),0);
   const miHoras = miSes*horasSesion;
   const miHora = miHoras>0 ? miIngreso/miHoras : 0;
-  const conEnt = pres.filter(c=>c.entrenador_id);
+  const conEnt = pres.filter(c=>!esMio(c));
   const porEnt = {};
   conEnt.forEach(c=>{ const id=c.entrenador_id; porEnt[id]=porEnt[id]||{n:0,ingreso:0,pago:0,ses:0}; porEnt[id].n++; porEnt[id].ingreso+=val(c); porEnt[id].pago+=(c.pago_entrenador_usd||0)*ses(c); porEnt[id].ses+=ses(c); });
 
