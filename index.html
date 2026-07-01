@@ -323,9 +323,11 @@ a { color: inherit; text-decoration: none; }
 .loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 60px; color: var(--ink-faint); font-family: var(--font-mono); font-size: 13px; }
 
 /* PANEL DERECHO DE MÉTRICAS (siempre fijo, compacto) */
-.app.has-panel { grid-template-columns: 264px minmax(0,1080px) minmax(300px,1fr) 320px; }
+.app.has-panel { grid-template-columns: 236px minmax(0,980px) minmax(360px,1fr) 300px; }
 .proj-col { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; border-left: 1px solid var(--line); background: var(--bg); padding: 16px 20px; }
-@media (max-width: 1500px) { .app.has-panel { grid-template-columns: 264px 1fr 320px; } .proj-col { display: none; } }
+/* Pantallas medianas (MacBook): menú más estrecho y Proyecciones más ancho */
+@media (max-width: 1680px) { .app.has-panel { grid-template-columns: 208px minmax(0,700px) minmax(400px,1fr) 288px; } }
+@media (max-width: 1360px) { .app.has-panel { grid-template-columns: 236px 1fr 320px; } .proj-col { display: none; } }
 .mp-toggle { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 4px; }
 .mp-toggle:hover { color: var(--ink); }
 .metrics-panel { position: sticky; top: 0; align-self: start; height: 100vh; border-left: 1px solid var(--line); background: var(--bg-1); overflow-y: auto; padding: 16px 14px 24px; display: grid; grid-template-columns: 1fr; gap: 10px; align-content: start; }
