@@ -950,72 +950,112 @@ const MonthlyRevenueChart = ({ year }) => {
 // ─── PROYECCIONES A FUTURO ────────────────────────────────────────────────────
 const ProyeccionesPanel = () => {
   const [contratos, setContratos] = useState([]);
+  const [entrenadores, setEntrenadores] = useState([]);
   const [abierto, setAbierto] = useState(true);
-  useEffect(()=>{ window._sb.from('contratos').select('canal,estado,precio_eur,precio_usd,pago_entrenador_usd,planes(nombre)').eq('estado','activo').eq('canal','PRESENCIAL').then(({data})=>setContratos(data||[])); },[]);
+  useEffect(()=>{
+    window._sb.from('contratos').select('canal,estado,precio_eur,precio_usd,pago_entrenador_usd,entrenador_id,planes(nombre)').eq('estado','activo').eq('canal','PRESENCIAL').then(({data})=>setContratos(data||[]));
+    window._sb.from('entrenadores').select('id,nombre,tipo').eq('activo',true).then(({data})=>setEntrenadores(data||[]));
+  },[]);
   const pres = (contratos||[]).filter(c=>c.canal==='PRESENCIAL' && c.estado==='activo');
   const val = c => (c.precio_usd||0) + (c.precio_eur||0)*1.08;
+  const ses = c => sesionesPlan(c.planes?.nombre);
   const avgPrecio = pres.length ? Math.round(pres.reduce((s,c)=>s+val(c),0)/pres.length) : 800;
-  const avgSes = pres.length ? Math.round(pres.reduce((s,c)=>s+sesionesPlan(c.planes?.nombre),0)/pres.length) : 12;
-  // Los valores se guardan en el navegador (persisten al recargar).
+  const avgSes = pres.length ? Math.round(pres.reduce((s,c)=>s+ses(c),0)/pres.length) : 12;
+
   const cfg = (()=>{ try { return JSON.parse(localStorage.getItem('af_proy')||'{}'); } catch(e){ return {}; } })();
   const [obj, setObj] = useState(cfg.obj ?? 50000);
-  const [horasSesion, setHorasSesion] = useState(cfg.horasSesion ?? 2);
+  const [horasSesion, setHorasSesion] = useState(cfg.horasSesion ?? 1.5);
   const [horasSemana, setHorasSemana] = useState(cfg.horasSemana ?? 40);
+  const [diasSemana, setDiasSemana] = useState(cfg.diasSemana ?? 5);
   const [precioCliente, setPrecioCliente] = useState(cfg.precioCliente ?? 800);
-  const [pagoEnt, setPagoEnt] = useState(cfg.pagoEnt ?? 583);
-  const [cliPorEnt, setCliPorEnt] = useState(cfg.cliPorEnt ?? 12);
+  const [pagoSesion, setPagoSesion] = useState(cfg.pagoSesion ?? 50);   // lo que pagas al entrenador POR SESIÓN
+  const [cliPorEnt, setCliPorEnt] = useState(cfg.cliPorEnt ?? 8);
   useEffect(()=>{ if(cfg.precioCliente==null && avgPrecio) setPrecioCliente(avgPrecio); }, [avgPrecio]);
-  useEffect(()=>{ try { localStorage.setItem('af_proy', JSON.stringify({obj,horasSesion,horasSemana,precioCliente,pagoEnt,cliPorEnt})); } catch(e){} }, [obj,horasSesion,horasSemana,precioCliente,pagoEnt,cliPorEnt]);
+  useEffect(()=>{ try { localStorage.setItem('af_proy', JSON.stringify({obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt})); } catch(e){} }, [obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt]);
 
   const IS = { padding:'8px 10px', background:'var(--bg-1)', border:'1px solid var(--line)', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' };
-  const F = ({label, val, set, suf}) => <div style={{display:'flex',flexDirection:'column',gap:5}}><span style={{fontSize:11,color:'var(--ink-faint)'}}>{label}</span><input type="number" value={val} onChange={e=>set(Number(e.target.value)||0)} style={IS}/>{suf&&<span style={{fontSize:10,color:'var(--ink-faint)'}}>{suf}</span>}</div>;
+  const F = ({label, val, set, step}) => <div style={{display:'flex',flexDirection:'column',gap:5}}><span style={{fontSize:11,color:'var(--ink-faint)'}}>{label}</span><input type="number" step={step||1} value={val} onChange={e=>set(Number(e.target.value)||0)} style={IS}/></div>;
+  const dato = (t, v, col) => <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'4px 0'}}><span style={{color:'var(--ink-dim)'}}>{t}</span><b style={{fontFamily:'var(--font-mono)',color:col||'var(--ink)'}}>{v}</b></div>;
+  const seccion = t => <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',margin:'18px 0 8px'}}>{t}</div>;
 
-  const horasClienteMes = avgSes * horasSesion;                 // horas que te cuesta un cliente al mes
-  const horasDispMes = horasSemana * 4.33;
-  const capacidadTuya = horasClienteMes>0 ? Math.floor(horasDispMes/horasClienteMes) : 0;
-  const techoTuyo = capacidadTuya * precioCliente;              // ganas todo (los entrenas tú)
-  const benefPorClienteEnt = precioCliente - pagoEnt;           // lo que te queda por cada cliente que lleva un entrenador
+  // ── AHORA MISMO (desde los datos reales) ──
+  const nombreEnt = id => entrenadores.find(e=>e.id===id)?.nombre || 'Entrenador';
+  const mios = pres.filter(c=>!c.entrenador_id);
+  const miIngreso = mios.reduce((s,c)=>s+val(c),0);
+  const miSes = mios.reduce((s,c)=>s+ses(c),0);
+  const miHoras = miSes*horasSesion;
+  const miHora = miHoras>0 ? miIngreso/miHoras : 0;
+  const conEnt = pres.filter(c=>c.entrenador_id);
+  const porEnt = {};
+  conEnt.forEach(c=>{ const id=c.entrenador_id; porEnt[id]=porEnt[id]||{n:0,ingreso:0,pago:0,ses:0}; porEnt[id].n++; porEnt[id].ingreso+=val(c); porEnt[id].pago+=(c.pago_entrenador_usd||0)*ses(c); porEnt[id].ses+=ses(c); });
+
+  // ── TU LÍMITE ENTRENANDO TÚ ──
+  const horasClienteMes = avgSes * horasSesion;
+  const sesMes = horasSesion>0 ? (horasSemana*4.33)/horasSesion : 0;    // sesiones/mes que caben
+  const sesSem = horasSesion>0 ? horasSemana/horasSesion : 0;
+  const sesDia = (horasSesion>0 && diasSemana>0) ? (horasSemana/diasSemana)/horasSesion : 0;
+  const cliMax = horasClienteMes>0 ? Math.floor((horasSemana*4.33)/horasClienteMes) : 0;
+  const techoTuyo = cliMax * precioCliente;
+
+  // ── ENTRENADOR ──
+  const pagoEntCliente = pagoSesion * avgSes;                 // lo que le pagas por cliente/mes
+  const benefClienteEnt = precioCliente - pagoEntCliente;     // lo que te deja a ti cada cliente suyo
+  const ganaEntPorHora = horasSesion>0 ? pagoSesion/horasSesion : 0;  // (si sesión = 1h, es pagoSesion)
+  const miMargenHora = horasSesion>0 ? (precioCliente/avgSes - pagoSesion)/horasSesion : 0;
+  const ganaEntrenador = cliPorEnt * pagoEntCliente;
+  const miNetoPorEntrenador = cliPorEnt * benefClienteEnt;
+
+  // ── PROYECCIÓN ──
   const restante = Math.max(0, obj - techoTuyo);
-  const clientesEnt = benefPorClienteEnt>0 ? Math.ceil(restante/benefPorClienteEnt) : 0;
+  const clientesEnt = benefClienteEnt>0 ? Math.ceil(restante/benefClienteEnt) : 0;
   const entrenadoresNec = cliPorEnt>0 ? Math.ceil(clientesEnt/cliPorEnt) : 0;
-  const ganaEntrenador = cliPorEnt * pagoEnt;
-  const totalClientes = capacidadTuya + clientesEnt;
-  const gananciaProyectada = techoTuyo + clientesEnt*benefPorClienteEnt;
-
-  const dato = (t, v, col) => <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'5px 0'}}><span style={{color:'var(--ink-dim)'}}>{t}</span><b style={{fontFamily:'var(--font-mono)',color:col||'var(--ink)'}}>{v}</b></div>;
+  const gananciaProyectada = techoTuyo + clientesEnt*benefClienteEnt;
 
   return (
     <div className="panel">
       <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
       {abierto && <div className="panel-body">
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}}>
+
+        {seccion('📍 Dónde estás ahora (presencial)')}
+        {dato(`Entrenas tú · ${mios.length} clientes`, `$${Math.round(miIngreso)}/mes`)}
+        {dato('Tu ganancia por hora entrenando', miHoras>0?`$${Math.round(miHora)}/hora`:'—', 'var(--pos)')}
+        {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses*horasSesion; return (
+          <div key={id} style={{marginTop:6,padding:'8px 10px',background:'var(--bg-1)',borderRadius:8}}>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>{nombreEnt(id)} · {e.n} clientes</div>
+            {dato('Le pagas', `$${Math.round(e.pago)}/mes`)}
+            {dato('Te deja a ti (neto)', `$${Math.round(neto)}/mes`, 'var(--pos)')}
+            {dato('Ganas gracias a él', hrs>0?`$${Math.round(neto/hrs)}/hora`:'—', 'var(--pos)')}
+          </div>
+        ); })}
+        {conEnt.length===0 && <div style={{fontSize:12,color:'var(--ink-faint)'}}>Aún no tienes clientes asignados a un entrenador.</div>}
+
+        {seccion('⚙️ Datos (los cambias tú)')}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <F label="Horas por sesión (con desplazamiento)" val={horasSesion} set={setHorasSesion} step={0.5}/>
+          <F label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
+          <F label="Días que trabajas / semana" val={diasSemana} set={setDiasSemana}/>
+          <F label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
+          <F label="Pago al entrenador por sesión ($)" val={pagoSesion} set={setPagoSesion}/>
           <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
-          <F label="Horas por sesión" val={horasSesion} set={setHorasSesion}/>
-          <F label="Tus horas / semana" val={horasSemana} set={setHorasSemana}/>
-          <F label="Precio medio cliente/mes ($)" val={precioCliente} set={setPrecioCliente}/>
-          <F label="Pago entrenador cliente/mes ($)" val={pagoEnt} set={setPagoEnt}/>
-          <F label="Clientes por entrenador" val={cliPorEnt} set={setCliPorEnt}/>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
-          <div>
-            <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Entrenando tú</div>
-            {dato('Horas por cliente / mes', `${horasClienteMes} h`)}
-            {dato('Clientes que puedes llevar tú', `${capacidadTuya}`)}
-            {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}`, 'var(--pos)')}
-          </div>
-          <div>
-            <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Para tu objetivo de ${Math.round(obj)}</div>
-            {dato('Beneficio por cliente con entrenador', `$${Math.round(benefPorClienteEnt)}`)}
-            {dato('Clientes que llevarían entrenadores', `${clientesEnt}`)}
-            {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
-            {dato('Cada entrenador ganaría', `$${Math.round(ganaEntrenador)}/mes`)}
-          </div>
-        </div>
-        <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--line)',display:'flex',flexWrap:'wrap',gap:24,alignItems:'baseline'}}>
-          <div><span style={{fontSize:12,color:'var(--ink-faint)'}}>Clientes totales</span> <b style={{fontFamily:'var(--font-mono)'}}>{totalClientes}</b> <span style={{fontSize:12,color:'var(--ink-faint)'}}>({capacidadTuya} tú + {clientesEnt} entrenadores)</span></div>
-          <div><span style={{fontSize:12,color:'var(--ink-faint)'}}>Ganancia proyectada</span> <b style={{fontFamily:'var(--font-mono)',color:gananciaProyectada>=obj?'var(--pos)':'var(--ink)',fontSize:16}}>${Math.round(gananciaProyectada)}/mes</b></div>
-        </div>
-        <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Con tus horas actuales, tú solo llegas a <b>${Math.round(techoTuyo)}</b>. A partir de ahí, cada entrenador con {cliPorEnt} clientes te suma <b>${Math.round(cliPorEnt*benefPorClienteEnt)}</b> netos y a él le paga <b>${Math.round(ganaEntrenador)}</b>.</div>
+
+        {seccion('🏋️ Tu límite entrenando TÚ')}
+        {dato('Sesiones que te caben', `${Math.round(sesDia)}/día · ${Math.round(sesSem)}/sem · ${Math.round(sesMes)}/mes`)}
+        {dato(`Clientes máx que puedes llevar (${avgSes} ses/cliente)`, `${cliMax}`)}
+        {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}/mes`, 'var(--pos)')}
+
+        {seccion('👥 Con un entrenador')}
+        {dato('Clientes por entrenador', `${cliPorEnt}`)}
+        {dato('El entrenador gana', `$${Math.round(ganaEntrenador)}/mes`)}
+        {dato('Te deja a ti (neto)', `$${Math.round(miNetoPorEntrenador)}/mes`, 'var(--pos)')}
+        {dato('Margen para ti por su hora', `$${Math.round(miMargenHora)}/hora`, 'var(--pos)')}
+
+        {seccion(`🚀 Proyección para $${Math.round(obj)}/mes`)}
+        {dato('Tú llegas (tu techo)', `$${Math.round(techoTuyo)}`)}
+        {dato('Clientes que faltan (entrenadores)', `${clientesEnt}`)}
+        {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
+        {dato('Ganancia proyectada', `$${Math.round(gananciaProyectada)}/mes`, gananciaProyectada>=obj?'var(--pos)':'var(--ink)')}
+        <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)',lineHeight:1.5}}>La rueda: cada entrenador con {cliPorEnt} clientes te deja <b>${Math.round(miNetoPorEntrenador)}</b> netos (a él le pagas ${Math.round(ganaEntrenador)}). Ese excedente financia al siguiente entrenador.</div>
       </div>}
     </div>
   );
