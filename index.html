@@ -988,7 +988,7 @@ const ProyeccionesPanel = () => {
     <div className="panel">
       <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
       {abierto && <div className="panel-body">
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:18}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}}>
           <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
           <F label="Horas por sesión" val={horasSesion} set={setHorasSesion}/>
           <F label="Tus horas / semana" val={horasSemana} set={setHorasSemana}/>
@@ -996,7 +996,7 @@ const ProyeccionesPanel = () => {
           <F label="Pago entrenador cliente/mes ($)" val={pagoEnt} set={setPagoEnt}/>
           <F label="Clientes por entrenador" val={cliPorEnt} set={setCliPorEnt}/>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr',gap:16}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
           <div>
             <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Entrenando tú</div>
             {dato('Horas por cliente / mes', `${horasClienteMes} h`)}
@@ -4640,7 +4640,7 @@ const App = () => {
         {canView ? (
           <div style={{display:'flex',alignItems:'flex-start'}}>
             <div style={{flex:'1 1 0',minWidth:0}}>{renderPage()}</div>
-            <aside style={{width:400,flexShrink:0,alignSelf:'stretch',borderLeft:'1px solid var(--line)',position:'sticky',top:0,maxHeight:'100vh',overflowY:'auto',padding:'16px 20px'}}><ProyeccionesPanel/></aside>
+            <aside style={{width:480,flexShrink:0,alignSelf:'stretch',borderLeft:'1px solid var(--line)',position:'sticky',top:0,maxHeight:'100vh',overflowY:'auto',padding:'16px 20px'}}><ProyeccionesPanel/></aside>
           </div>
         ) : renderPage()}
       </main>
