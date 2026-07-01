@@ -1079,9 +1079,7 @@ const DashboardGeneral = () => {
   const activeSkool = clientes.filter(c=>c.canal==='SKOOL' && c.estado==='activo').length;
 
   return (
-    <div className="page" style={{maxWidth:'none'}}>
-     <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
-      <div style={{flex:'1 1 0',minWidth:0,maxWidth:1040}}>
+    <div className="page">
       <div className="page-header">
         <div>
           <div className="page-eyebrow">Dashboard · General</div>
@@ -1199,9 +1197,6 @@ const DashboardGeneral = () => {
           </div>
         </div>
       </div>
-      </div>
-      <aside style={{width:400,flexShrink:0,position:'sticky',top:0,alignSelf:'stretch'}}><ProyeccionesPanel/></aside>
-     </div>
     </div>
   );
 };
@@ -4642,7 +4637,12 @@ const App = () => {
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
         <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit} setSelectedCliente={setSelectedCliente}/>
-        {renderPage()}
+        {canView ? (
+          <div style={{display:'flex',alignItems:'flex-start'}}>
+            <div style={{flex:'1 1 0',minWidth:0}}>{renderPage()}</div>
+            <aside style={{width:400,flexShrink:0,alignSelf:'stretch',borderLeft:'1px solid var(--line)',position:'sticky',top:0,maxHeight:'100vh',overflowY:'auto',padding:'16px 20px'}}><ProyeccionesPanel/></aside>
+          </div>
+        ) : renderPage()}
       </main>
       {showPanel && <MetricsPanel/>}
     </div>
