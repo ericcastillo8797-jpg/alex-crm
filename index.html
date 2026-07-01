@@ -945,6 +945,74 @@ const MonthlyRevenueChart = ({ year }) => {
   );
 };
 
+// ─── PROYECCIONES A FUTURO ────────────────────────────────────────────────────
+const ProyeccionesPanel = ({ contratos }) => {
+  const pres = (contratos||[]).filter(c=>c.canal==='PRESENCIAL' && c.estado==='activo');
+  const val = c => (c.precio_usd||0) + (c.precio_eur||0)*1.08;
+  const avgPrecio = pres.length ? Math.round(pres.reduce((s,c)=>s+val(c),0)/pres.length) : 800;
+  const avgSes = pres.length ? Math.round(pres.reduce((s,c)=>s+sesionesPlan(c.planes?.nombre),0)/pres.length) : 12;
+  const [obj, setObj] = useState(50000);
+  const [horasSesion, setHorasSesion] = useState(2);
+  const [horasSemana, setHorasSemana] = useState(40);
+  const [precioCliente, setPrecioCliente] = useState(avgPrecio);
+  const [pagoEnt, setPagoEnt] = useState(583);          // lo que pagas al entrenador por cliente/mes
+  const [cliPorEnt, setCliPorEnt] = useState(12);
+  useEffect(()=>{ setPrecioCliente(avgPrecio); }, [avgPrecio]);
+
+  const IS = { padding:'8px 10px', background:'var(--bg-1)', border:'1px solid var(--line)', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' };
+  const F = ({label, val, set, suf}) => <div style={{display:'flex',flexDirection:'column',gap:5}}><span style={{fontSize:11,color:'var(--ink-faint)'}}>{label}</span><input type="number" value={val} onChange={e=>set(Number(e.target.value)||0)} style={IS}/>{suf&&<span style={{fontSize:10,color:'var(--ink-faint)'}}>{suf}</span>}</div>;
+
+  const horasClienteMes = avgSes * horasSesion;                 // horas que te cuesta un cliente al mes
+  const horasDispMes = horasSemana * 4.33;
+  const capacidadTuya = horasClienteMes>0 ? Math.floor(horasDispMes/horasClienteMes) : 0;
+  const techoTuyo = capacidadTuya * precioCliente;              // ganas todo (los entrenas tú)
+  const benefPorClienteEnt = precioCliente - pagoEnt;           // lo que te queda por cada cliente que lleva un entrenador
+  const restante = Math.max(0, obj - techoTuyo);
+  const clientesEnt = benefPorClienteEnt>0 ? Math.ceil(restante/benefPorClienteEnt) : 0;
+  const entrenadoresNec = cliPorEnt>0 ? Math.ceil(clientesEnt/cliPorEnt) : 0;
+  const ganaEntrenador = cliPorEnt * pagoEnt;
+  const totalClientes = capacidadTuya + clientesEnt;
+  const gananciaProyectada = techoTuyo + clientesEnt*benefPorClienteEnt;
+
+  const dato = (t, v, col) => <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'5px 0'}}><span style={{color:'var(--ink-dim)'}}>{t}</span><b style={{fontFamily:'var(--font-mono)',color:col||'var(--ink)'}}>{v}</b></div>;
+
+  return (
+    <div className="panel">
+      <div className="panel-head"><h2 className="panel-title" style={{color:'var(--ink)'}}>Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Cuántos entrenadores necesitas y tu techo</span></div>
+      <div className="panel-body">
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
+          <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
+          <F label="Horas por sesión (con desplazamiento)" val={horasSesion} set={setHorasSesion}/>
+          <F label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
+          <F label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
+          <F label="Pago al entrenador por cliente / mes ($)" val={pagoEnt} set={setPagoEnt}/>
+          <F label="Clientes por entrenador" val={cliPorEnt} set={setCliPorEnt}/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Entrenando tú</div>
+            {dato('Horas por cliente / mes', `${horasClienteMes} h`)}
+            {dato('Clientes que puedes llevar tú', `${capacidadTuya}`)}
+            {dato('Tu techo entrenando solo tú', `$${Math.round(techoTuyo)}`, 'var(--pos)')}
+          </div>
+          <div>
+            <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Para tu objetivo de ${Math.round(obj)}</div>
+            {dato('Beneficio por cliente con entrenador', `$${Math.round(benefPorClienteEnt)}`)}
+            {dato('Clientes que llevarían entrenadores', `${clientesEnt}`)}
+            {dato('Entrenadores que necesitas', `${entrenadoresNec}`, 'var(--ink)')}
+            {dato('Cada entrenador ganaría', `$${Math.round(ganaEntrenador)}/mes`)}
+          </div>
+        </div>
+        <div style={{marginTop:16,paddingTop:14,borderTop:'1px solid var(--line)',display:'flex',flexWrap:'wrap',gap:24,alignItems:'baseline'}}>
+          <div><span style={{fontSize:12,color:'var(--ink-faint)'}}>Clientes totales</span> <b style={{fontFamily:'var(--font-mono)'}}>{totalClientes}</b> <span style={{fontSize:12,color:'var(--ink-faint)'}}>({capacidadTuya} tú + {clientesEnt} entrenadores)</span></div>
+          <div><span style={{fontSize:12,color:'var(--ink-faint)'}}>Ganancia proyectada</span> <b style={{fontFamily:'var(--font-mono)',color:gananciaProyectada>=obj?'var(--pos)':'var(--ink)',fontSize:16}}>${Math.round(gananciaProyectada)}/mes</b></div>
+        </div>
+        <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Con tus horas actuales, tú solo llegas a <b>${Math.round(techoTuyo)}</b>. A partir de ahí, cada entrenador con {cliPorEnt} clientes te suma <b>${Math.round(cliPorEnt*benefPorClienteEnt)}</b> netos y a él le paga <b>${Math.round(ganaEntrenador)}</b>.</div>
+      </div>
+    </div>
+  );
+};
+
 // ─── DASHBOARD GENERAL ────────────────────────────────────────────────────────
 const DashboardGeneral = () => {
   const now = new Date();
@@ -1036,6 +1104,8 @@ const DashboardGeneral = () => {
         <FinanceCard label="Skool" fact={factUsdCanal('SKOOL')} gasto={gastoNegocioCanal('SKOOL')} personal={personalTotalCanal('SKOOL')} count={activeSkool}/>
         <FinanceCard label="Total" fact={factTotalUsd} gasto={gastoNegocioTotal} personal={personalTotal} count={activeOnline+activePresencial+activeSkool}/>
       </div>
+
+      <ProyeccionesPanel contratos={clientes}/>
 
       <MonthlyRevenueChart year={year}/>
 
