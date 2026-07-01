@@ -869,12 +869,18 @@ const MonthlyRevenueChart = ({ year }) => {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 }, color: '#4a4842', boxWidth: 10, boxHeight: 10, borderRadius: 3 } },
           tooltip: {
+            mode: 'index', intersect: false,
             backgroundColor: '#fff', titleColor: '#111110', bodyColor: '#4a4842',
-            borderColor: '#e8e6df', borderWidth: 1,
-            callbacks: { label: c => ` ${c.dataset.label}: $${c.parsed.y.toFixed(0)}` }
+            borderColor: '#e8e6df', borderWidth: 1, padding: 10,
+            callbacks: {
+              label: c => `  ${c.dataset.label}: $${c.parsed.y.toFixed(0)}`,
+              footer: items => 'Total facturado: $' + items.reduce((s,i)=>s+(i.parsed.y||0),0).toFixed(0)
+            },
+            footerColor: '#111110', footerFont: { weight: '700' }
           }
         },
         scales: {
@@ -1005,8 +1011,8 @@ const DashboardGeneral = () => {
 
       <div className="panel">
         <div className="panel-head">
-          <h2 className="panel-title">Tabla de <span className="italic">clientes</span></h2>
-          <span className="panel-sub">{MONTHS_LONG[month]} · {year}</span>
+          <h2 className="panel-title">Clientes <span className="italic">activos</span></h2>
+          <span className="panel-sub">{clientes.filter(c=>c.estado==='activo').length} activos</span>
         </div>
         <div className="table-wrap">
           {loading ? <div className="loading">Cargando datos…</div> : (
@@ -1015,23 +1021,21 @@ const DashboardGeneral = () => {
                 <tr>
                   <th style={{width:'28%'}}>Cliente</th>
                   <th>Canal</th>
-                  <th>Fecha pago</th>
-                  <th style={{textAlign:'right'}}>Importe €</th>
-                  <th style={{textAlign:'right'}}>Importe $</th>
-                  <th style={{textAlign:'right'}}>Total (€)</th>
+                  <th>Plan</th>
+                  <th style={{textAlign:'right'}}>Precio</th>
+                  <th>Inicio</th>
+                  <th>Fin</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {clientes.filter(c=>c.estado==='activo').length === 0 ? (
                   <tr><td colSpan={6} style={{padding:0}}>
                     <div style={{padding:'56px 24px', textAlign:'center', color:'var(--ink-faint)'}}>
                       <div className="empty-icon" style={{margin:'0 auto 14px'}}><Icon name="users" size={22}/></div>
-                      <div style={{fontFamily:'var(--font-serif)', fontSize:22, color:'var(--ink)', marginBottom:4}}>
-                        Sin clientes <span style={{fontStyle:'italic', color:'var(--stone-muted)'}}>en {MONTHS_LONG[month]}</span>
-                      </div>
+                      <div style={{fontFamily:'var(--font-serif)', fontSize:22, color:'var(--ink)', marginBottom:4}}>Sin clientes activos</div>
                     </div>
                   </td></tr>
-                ) : filtered.map(c => (
+                ) : clientes.filter(c=>c.estado==='activo').sort((a,b)=>(a.clientes?.nombre||'').localeCompare(b.clientes?.nombre||'')).map(c => (
                   <tr key={c.id}>
                     <td className="name">
                       <span className="avatar-sm">{initials(c.clientes?.nombre||'')}</span>
@@ -1039,21 +1043,13 @@ const DashboardGeneral = () => {
                       <span className="sub">{c.clientes?.pais}</span>
                     </td>
                     <td><span className={`chip ${c.canal?.toLowerCase()}`}>{c.canal}</span></td>
-                    <td className="date">{c.fecha}</td>
-                    <td className={`num ${!c.monto_eur?'zero':''}`}>{fmt(c.monto_eur)}</td>
-                    <td className={`num ${!c.monto_usd?'zero':''}`}>{fmt(c.monto_usd,'$')}</td>
-                    <td className="num">{fmt((c.monto_eur||0)+(c.monto_usd||0)*0.92)}</td>
+                    <td style={{fontSize:12}}>{c.planes?.nombre||'—'}</td>
+                    <td className="num">{c.divisa_principal==='USD'?`$${c.precio_usd||0}`:`${c.precio_eur||0}€`}</td>
+                    <td className="date">{c.fecha_inicio||'—'}</td>
+                    <td className="date">{c.fecha_fin||'—'}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr>
-                  <td>Total</td><td></td><td></td>
-                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.monto_eur||0),0))}</td>
-                  <td className="num">{fmt(filtered.reduce((s,c)=>s+(c.monto_usd||0),0),'$')}</td>
-                  <td className="num">{fmt(totalEur + totalUsd*0.92)}</td>
-                </tr>
-              </tfoot>
             </table>
           )}
         </div>
@@ -3325,8 +3321,7 @@ const RolesPermisos = () => {
   const PERMISOS = [
     { rol:'founder',    acceso:'Acceso total y edición. Eric: ve y edita todo.' },
     { rol:'ceo',        acceso:'Ve todo el negocio (igual que Founder) pero sin editar. Alex.' },
-    { rol:'admin',      acceso:'Acceso total.' },
-    { rol:'entrenador', acceso:'Todo excepto Negocio (dashboards, facturación, gastos, comisiones).' },
+    { rol:'entrenador', acceso:'Solo su panel: sus clientes y sus sesiones.' },
     { rol:'setter',     acceso:'Pendiente de definir (cuando se conecte su acceso).' },
     { rol:'closer',     acceso:'Pendiente de definir (cuando se conecte su acceso).' },
     { rol:'cocinera',   acceso:'Solo sección Comidas Delivery.' },
@@ -3384,7 +3379,6 @@ const RolesPermisos = () => {
               <select value={newForm.rol} onChange={e=>setNewForm(f=>({...f,rol:e.target.value}))} style={{padding:'9px 12px',background:'var(--bg)',border:'1px solid var(--line)',borderRadius:8,fontSize:13,fontFamily:'inherit',outline:'none'}}>
                 <option value="founder">Founder</option>
                 <option value="ceo">CEO</option>
-                <option value="admin">Admin</option>
                 <option value="entrenador">Entrenador</option>
                 <option value="setter">Setter</option>
                 <option value="closer">Closer</option>
@@ -3434,7 +3428,6 @@ const RolesPermisos = () => {
                         style={{padding:'5px 10px',background:'var(--bg-1)',border:'1px solid var(--line)',borderRadius:8,fontSize:12,fontFamily:'inherit',outline:'none',cursor:'pointer'}}>
                         <option value="founder">Founder</option>
                         <option value="ceo">CEO</option>
-                        <option value="admin">Admin</option>
                         <option value="entrenador">Entrenador</option>
                         <option value="setter">Setter</option>
                         <option value="closer">Closer</option>
@@ -4057,15 +4050,21 @@ const MetricsPanel = () => {
   const [pagos, setPagos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [editores, setEditores] = useState([]);
+  const [entrenadores, setEntrenadores] = useState([]);
+  const [sesiones, setSesiones] = useState([]);
   useEffect(() => { (async () => {
-    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,pago_entrenador_eur,pago_entrenador_usd,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(nombre,duracion_meses)');
+    const { data: cs } = await window._sb.from('contratos').select('precio_eur,precio_usd,pago_entrenador_eur,pago_entrenador_usd,entrenador_id,fecha_inicio,fecha_fin,estado,canal,horas_semana,planes(nombre,duracion_meses)');
     setContratos(cs || []);
     const { data: ps } = await window._sb.from('pagos').select('monto_eur,monto_usd,fecha,canal');
     setPagos(ps || []);
-    const { data: gs } = await window._sb.from('gastos').select('importe_eur,importe_usd,frecuencia,canal,imputa_canal');
+    const { data: gs } = await window._sb.from('gastos').select('concepto,importe_eur,importe_usd,frecuencia,canal,imputa_canal');
     setGastos(gs || []);
     const { data: eds } = await window._sb.from('editores_video').select('pago_mensual,divisa').eq('activo', true);
     setEditores(eds || []);
+    const { data: en } = await window._sb.from('entrenadores').select('id,nombre,tipo').eq('activo', true).order('nombre');
+    setEntrenadores(en || []);
+    const sr = await window._sb.from('sesiones').select('entrenador_id,pago_usd,fecha');
+    if (!sr.error) setSesiones(sr.data || []);
   })(); }, []);
 
   if (false) return (
@@ -4088,6 +4087,13 @@ const MetricsPanel = () => {
   const hoyC = pagos.filter(p => p.fecha === todayStr);
   const semC = pagos.filter(p => { const d = dp(p); return d && d >= weekAgo && d <= now; });
   const activos = contratos.filter(c => c.estado === 'activo').length;
+  // Pago mensual a cada entrenador = su gasto de personal fijo (por nombre) + sesiones cobradas este mes.
+  const pagoEntrenadorMes = e => {
+    const primer = (e.nombre || '').trim().split(' ')[0].toLowerCase();
+    const fijo = gastos.filter(g => g.frecuencia==='MENSUAL' && g.canal==='PERSONAL' && (g.concepto||'').toLowerCase().includes(primer)).reduce((s,g)=>s+((g.importe_usd||0)+(g.importe_eur||0)*1.08),0);
+    const ses = sesiones.filter(s => s.entrenador_id===e.id && (()=>{ const d=s.fecha?new Date(s.fecha+'T00:00:00'):null; return d&&d.getFullYear()===y&&d.getMonth()===mo; })()).reduce((s2,x)=>s2+(x.pago_usd||0),0);
+    return fijo + ses;
+  };
   const mesE = sumPagosField(mesC, 'monto_eur');
   const mesU = sumPagosField(mesC, 'monto_usd');
   const edE = editores.filter(e => e.divisa === 'EUR').reduce((s, e) => s + (e.pago_mensual || 0), 0);
@@ -4168,6 +4174,15 @@ const MetricsPanel = () => {
           ); })}
           <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '3px 0', fontWeight: 600 }}><span style={{ flex: 1 }}>Personal total</span><span style={{ width: 64, textAlign: 'right' }}></span><span style={{ width: 56, textAlign: 'right', color: 'var(--neg)' }}>${Math.round(totPersonal)}</span><span style={{ width: 64, textAlign: 'right' }}></span></div>
           <div style={{ display: 'flex', fontSize: 11, fontFamily: 'var(--font-mono)', padding: '6px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontWeight: 600 }}><span style={{ flex: 1 }}>Total</span><span style={{ width: 64, textAlign: 'right' }}>${Math.round(totFact)}</span><span style={{ width: 56, textAlign: 'right', color: 'var(--ink-faint)' }}>${Math.round(totNegocio + totPersonal)}</span><span style={{ width: 64, textAlign: 'right', color: (totFact - totNegocio - totPersonal) < 0 ? 'var(--neg)' : 'var(--pos)' }}>${Math.round(totFact - totNegocio - totPersonal)}</span></div>
+        </div>
+      </div>
+      <div className="mp-card mp-wide">
+        <div className="mp-label">Pago a entrenadores · {meses[mo]}</div>
+        <div style={{ marginTop: 6 }}>
+          {entrenadores.length===0 ? <div style={{fontSize:11,color:'var(--ink-faint)'}}>Sin entrenadores.</div> : entrenadores.map(e=>{ const v=pagoEntrenadorMes(e); return (
+            <div key={e.id} style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'3px 0' }}><span style={{flex:1,color:'var(--ink-dim)'}}>{e.nombre} <span style={{color:'var(--ink-faint)'}}>({e.tipo||'online'})</span></span><span style={{color:'var(--neg)'}}>${Math.round(v)}</span></div>
+          ); })}
+          <div style={{ display:'flex', fontSize:11, fontFamily:'var(--font-mono)', padding:'6px 0 0', marginTop:4, borderTop:'1px solid var(--line)', fontWeight:600 }}><span style={{flex:1}}>Total</span><span>${Math.round(entrenadores.reduce((s,e)=>s+pagoEntrenadorMes(e),0))}</span></div>
         </div>
       </div>
       <div className="mp-card mp-wide">
