@@ -988,15 +988,15 @@ const ProyeccionesPanel = () => {
     <div className="panel">
       <div className="panel-head" onClick={()=>setAbierto(o=>!o)} style={{cursor:'pointer'}}><h2 className="panel-title" style={{color:'var(--ink)'}}>{abierto?'▾':'▸'} Proyecciones <span className="italic">a futuro</span></h2><span className="panel-sub">Objetivo ${Math.round(obj)} · proyectado ${Math.round(gananciaProyectada)} · {entrenadoresNec} entrenadores</span></div>
       {abierto && <div className="panel-body">
-        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:18}}>
           <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
-          <F label="Horas por sesión (con desplazamiento)" val={horasSesion} set={setHorasSesion}/>
-          <F label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
-          <F label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
-          <F label="Pago al entrenador por cliente / mes ($)" val={pagoEnt} set={setPagoEnt}/>
+          <F label="Horas por sesión" val={horasSesion} set={setHorasSesion}/>
+          <F label="Tus horas / semana" val={horasSemana} set={setHorasSemana}/>
+          <F label="Precio medio cliente/mes ($)" val={precioCliente} set={setPrecioCliente}/>
+          <F label="Pago entrenador cliente/mes ($)" val={pagoEnt} set={setPagoEnt}/>
           <F label="Clientes por entrenador" val={cliPorEnt} set={setCliPorEnt}/>
         </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr',gap:16}}>
           <div>
             <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',marginBottom:6}}>Entrenando tú</div>
             {dato('Horas por cliente / mes', `${horasClienteMes} h`)}
@@ -1079,7 +1079,9 @@ const DashboardGeneral = () => {
   const activeSkool = clientes.filter(c=>c.canal==='SKOOL' && c.estado==='activo').length;
 
   return (
-    <div className="page">
+    <div className="page" style={{maxWidth:'none'}}>
+     <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+      <div style={{flex:'1 1 0',minWidth:0,maxWidth:1040}}>
       <div className="page-header">
         <div>
           <div className="page-eyebrow">Dashboard · General</div>
@@ -1089,8 +1091,6 @@ const DashboardGeneral = () => {
           <span className="dot"/><span>EUR · En vivo</span>
         </div>
       </div>
-
-      <ProyeccionesPanel/>
 
       <div className="filters">
         <div className="filter-group">
@@ -1199,6 +1199,9 @@ const DashboardGeneral = () => {
           </div>
         </div>
       </div>
+      </div>
+      <aside style={{width:400,flexShrink:0,position:'sticky',top:0,alignSelf:'stretch'}}><ProyeccionesPanel/></aside>
+     </div>
     </div>
   );
 };
