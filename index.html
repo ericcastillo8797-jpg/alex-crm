@@ -950,6 +950,10 @@ const MonthlyRevenueChart = ({ year }) => {
 };
 
 // ─── PROYECCIONES A FUTURO ────────────────────────────────────────────────────
+// Campo estable a nivel de módulo (si se define dentro del panel, el input pierde el foco al escribir).
+const PROY_IS = { padding:'8px 10px', background:'var(--bg-1)', border:'1px solid var(--line)', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' };
+const ProyF = ({ label, val, set, step }) => <div style={{display:'flex',flexDirection:'column',gap:5}}><span style={{fontSize:11,color:'var(--ink-faint)'}}>{label}</span><input type="number" step={step||1} value={val} onChange={e=>set(e.target.value===''?0:Number(e.target.value))} style={PROY_IS}/></div>;
+
 const ProyeccionesPanel = () => {
   const [contratos, setContratos] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);
@@ -975,8 +979,6 @@ const ProyeccionesPanel = () => {
   useEffect(()=>{ if(cfg.precioCliente==null && avgPrecio) setPrecioCliente(avgPrecio); }, [avgPrecio]);
   useEffect(()=>{ try { localStorage.setItem('af_proy', JSON.stringify({obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt})); } catch(e){} }, [obj,horasSesion,horasSemana,diasSemana,precioCliente,pagoSesion,cliPorEnt]);
 
-  const IS = { padding:'8px 10px', background:'var(--bg-1)', border:'1px solid var(--line)', borderRadius:8, fontSize:14, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' };
-  const F = ({label, val, set, step}) => <div style={{display:'flex',flexDirection:'column',gap:5}}><span style={{fontSize:11,color:'var(--ink-faint)'}}>{label}</span><input type="number" step={step||1} value={val} onChange={e=>set(Number(e.target.value)||0)} style={IS}/></div>;
   const dato = (t, v, col) => <div style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'4px 0'}}><span style={{color:'var(--ink-dim)'}}>{t}</span><b style={{fontFamily:'var(--font-mono)',color:col||'var(--ink)'}}>{v}</b></div>;
   const seccion = t => <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',margin:'18px 0 8px'}}>{t}</div>;
 
@@ -1033,12 +1035,12 @@ const ProyeccionesPanel = () => {
 
         {seccion('⚙️ Datos (los cambias tú)')}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <F label="Horas por sesión (con desplazamiento)" val={horasSesion} set={setHorasSesion} step={0.5}/>
-          <F label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
-          <F label="Días que trabajas / semana" val={diasSemana} set={setDiasSemana}/>
-          <F label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
-          <F label="Pago al entrenador por sesión ($)" val={pagoSesion} set={setPagoSesion}/>
-          <F label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
+          <ProyF label="Horas por sesión (incluye ida y vuelta)" val={horasSesion} set={setHorasSesion} step={0.5}/>
+          <ProyF label="Tus horas disponibles / semana" val={horasSemana} set={setHorasSemana}/>
+          <ProyF label="Días que trabajas / semana" val={diasSemana} set={setDiasSemana}/>
+          <ProyF label="Precio medio por cliente / mes ($)" val={precioCliente} set={setPrecioCliente}/>
+          <ProyF label="Pago al entrenador por sesión ($)" val={pagoSesion} set={setPagoSesion}/>
+          <ProyF label="Objetivo neto / mes ($)" val={obj} set={setObj}/>
         </div>
 
         {seccion('🏋️ Tu límite entrenando TÚ')}
