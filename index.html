@@ -4737,7 +4737,7 @@ const App = () => {
     <div className={'app'+(showPanel?' has-panel':'')}>
       <Sidebar route={route} setRoute={setRoute} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} user={user} onLogout={logout} perfil={perfil}/>
       <main className="main">
-        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canEdit} setSelectedCliente={setSelectedCliente}/>
+        <Topbar route={route} onMenu={()=>setMobileOpen(true)} setRoute={setRoute} showActions={canView} setSelectedCliente={setSelectedCliente}/>
         {renderPage()}
       </main>
       {showPanel && <MetricsPanel/>}
