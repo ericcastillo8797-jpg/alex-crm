@@ -1084,24 +1084,25 @@ const ProyeccionesPanel = () => {
 
         <div className="panel">{cabecera('Ahora','mismo')}<div className="panel-body">
           {dato(`Entrenas tú · ${mios.length} clientes`, `$${nf(miIngreso)}/mes`)}
-          {dato('Tu ganancia por hora entrenando', miHoras>0?`$${nf(miHora)}/hora`:'—', 'var(--pos)')}
+          {dato('Horas que entrenas al mes', `${nf(miHoras)}h`)}
+          {dato('Tu ganancia por hora', miHoras>0?`$${nf(miHora)}/hora`:'—', 'var(--pos)')}
           {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses*horasSesion; return (
             <div key={id} style={{marginTop:8,padding:'8px 10px',background:'var(--bg-1)',borderRadius:8}}>
-              <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>{nombreEnt(id)} · {e.n} clientes</div>
+              <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>{nombreEnt(id)} · {e.n} clientes · {nf(hrs)}h/mes</div>
+              {dato('Te generan', `$${nf(e.ingreso)}/mes`)}
               {dato('Le pagas', `$${nf(e.pago)}/mes`)}
-              {dato('Te deja a ti (neto)', `$${nf(neto)}/mes`, 'var(--pos)')}
-              {dato('Ganas gracias a él', hrs>0?`$${nf(neto/hrs)}/hora`:'—', 'var(--pos)')}
+              {dato('Te queda a ti', `$${nf(neto)}/mes`, 'var(--pos)')}
+              {dato('Por su hora', hrs>0?`$${nf(neto/hrs)}/hora`:'—', 'var(--pos)')}
             </div>
           ); })}
+          {conEnt.some(c=>!c.pago_entrenador_usd) && <div style={{fontSize:11,color:'var(--ink-faint)',marginTop:8,lineHeight:1.5}}>Si "le pagas $0" es porque aún no has puesto el pago del entrenador en las fichas de esos clientes. Ponlo y esto se ajusta solo.</div>}
           {conEnt.length===0 && <div style={{fontSize:12,color:'var(--ink-faint)',marginTop:6}}>Aún no tienes clientes asignados a un entrenador.</div>}
         </div></div>
 
         <div className="panel">{cabecera('Entrenando','tú')}<div className="panel-body">
           {dato('Lo que cobras por hora', `$${nf(cobroHora)}/hora`, 'var(--pos)')}
           {dato('Por hora real (con desplazamiento)', `$${nf(tuHoraReal)}/hora`)}
-          {dato('Máx clientes que te vale la pena', `${cliMaxTuyo}`)}
-          {dato('Si los entrenas todos tú', `$${nf(ingresoTuyoMax)}/mes`, 'var(--pos)')}
-          <div style={{fontSize:12,color:'var(--ink-faint)',marginTop:8,lineHeight:1.5}}>A tus horas ideales ({horasIdeales}h/sem) entrenas <b>{cliIdeal}</b> clientes y ganas <b>${nf(ingresoIdeal)}</b>/mes. El resto, mejor delegarlo.</div>
+          <div style={{fontSize:12,color:'var(--ink-faint)',marginTop:8,lineHeight:1.5}}>A tus horas ideales ({horasIdeales}h/sem) puedes entrenar <b>{cliIdeal}</b> clientes (de media {nf(avgSes)} sesiones cada uno) y ganar <b>${nf(ingresoIdeal)}</b>/mes. El resto, delegarlos.</div>
         </div></div>
 
         <div className="panel">{cabecera('Un','entrenador')}<div className="panel-body">
