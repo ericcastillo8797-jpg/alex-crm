@@ -1057,7 +1057,9 @@ const ProyeccionesPanel = () => {
             <div style={{fontSize:12,color:'var(--ink-faint)',marginBottom:8}}>Calculado solo de tus presenciales activos (los precios son variables, no hay que ponerlos):</div>
             {dato(`Precio medio por cliente (${pres.length} clientes)`, `$${nf(avgPrecio)}/mes`)}
             {dato('Sesiones medias por cliente', `${nf(avgSes)}/mes`)}
-            {dato('Cobras de media por hora', `$${nf(cobroHora)}/hora`, 'var(--pos)')}
+            {dato('Cobras/hora · media general', `$${nf(cobroHora)}/hora`, 'var(--pos)')}
+            {miSes>0 && dato('Cobras/hora · tus clientes (Alex)', `$${nf(miIngreso/miSes)}/hora`, 'var(--pos)')}
+            {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; return e.ses>0 ? <div key={'ch'+id}>{dato(`Cobras/hora · clientes de ${nombreEnt(id)}`, `$${nf(e.ingreso/e.ses)}/hora`, 'var(--pos)')}</div> : null; })}
             <div style={{fontSize:10,letterSpacing:'0.16em',textTransform:'uppercase',color:'var(--ink-faint)',margin:'12px 0 4px'}}>Pago a entrenadores</div>
             {Object.keys(porEnt).length===0 ? <div style={{fontSize:12,color:'var(--ink-faint)'}}>Aún no pagas a ningún entrenador.</div> : Object.keys(porEnt).map(id=>{ const e=porEnt[id]; return dato(`${nombreEnt(id)} (${e.n} cli.)`, `$${nf(e.ses>0?e.pago/e.ses:0)}/sesión · $${nf(e.pago)}/mes total`); })}
             {conEnt.length>0 && dato('Total que pagas a entrenadores', `$${nf(conEnt.reduce((s,c)=>s+(c.pago_entrenador_usd||0)*ses(c),0))}/mes`, 'var(--neg)')}
