@@ -999,9 +999,8 @@ const ProyeccionesPanel = () => {
   const esMio = c => !c.entrenador_id || c.entrenador_id===alexId;
   const mios = pres.filter(esMio);
   const miIngreso = mios.reduce((s,c)=>s+val(c),0);
-  const miSes = mios.reduce((s,c)=>s+ses(c),0);
-  const miHoras = miSes*horasSesion;
-  const miHora = miHoras>0 ? miIngreso/miHoras : 0;
+  const miSes = mios.reduce((s,c)=>s+ses(c),0);   // suma de sesiones = horas de entreno al mes
+  const miHora = miSes>0 ? miIngreso/miSes : 0;   // $ por hora entrenada (por sesión)
   const conEnt = pres.filter(c=>!esMio(c));
   const porEnt = {};
   conEnt.forEach(c=>{ const id=c.entrenador_id; porEnt[id]=porEnt[id]||{n:0,ingreso:0,pago:0,ses:0}; porEnt[id].n++; porEnt[id].ingreso+=val(c); porEnt[id].pago+=(c.pago_entrenador_usd||0)*ses(c); porEnt[id].ses+=ses(c); });
@@ -1085,9 +1084,9 @@ const ProyeccionesPanel = () => {
 
         <div className="panel">{cabecera('Ahora','mismo')}<div className="panel-body">
           {dato(`Entrenas tú · ${mios.length} clientes`, `$${nf(miIngreso)}/mes`)}
-          {dato('Horas que entrenas al mes', `${nf(miHoras)}h`)}
-          {dato('Tu ganancia por hora', miHoras>0?`$${nf(miHora)}/hora`:'—', 'var(--pos)')}
-          {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses*horasSesion; return (
+          {dato('Horas que entrenas al mes', `${nf(miSes)}h`)}
+          {dato('Tu ganancia por hora', miSes>0?`$${nf(miHora)}/hora`:'—', 'var(--pos)')}
+          {Object.keys(porEnt).map(id=>{ const e=porEnt[id]; const neto=e.ingreso-e.pago; const hrs=e.ses; return (
             <div key={id} style={{marginTop:8,padding:'8px 10px',background:'var(--bg-1)',borderRadius:8}}>
               <div style={{fontSize:12,fontWeight:600,marginBottom:2}}>{nombreEnt(id)} · {e.n} clientes · {nf(hrs)}h/mes</div>
               {dato('Te generan', `$${nf(e.ingreso)}/mes`)}
