@@ -1835,7 +1835,7 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   const [setters, setSetters] = useState([]);
   const [closers, setClosers] = useState([]);
   const [entrenadores, setEntrenadores] = useState([]);
-  const [venta, setVenta] = useState({ setter_id:'', closer_id:'', entrenador_id:'' });
+  const [venta, setVenta] = useState({ setter_id:'', closer_id:'', entrenador_id:'', pago_entrenador:0 });
   const [savingVenta, setSavingVenta] = useState(false);
   const [ventaMsg, setVentaMsg] = useState('');
   const [planes, setPlanes] = useState([]);
@@ -1881,12 +1881,12 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
   }, [cliente]);
 
   useEffect(()=>{ loadContratos(); },[loadContratos]);
-  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'', entrenador_id:a?.entrenador_id||'' }); setPlanSel(a?.plan_id||''); },[contratos]);
+  useEffect(()=>{ const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1]; setVenta({ setter_id:a?.setter_id||'', closer_id:a?.closer_id||'', entrenador_id:a?.entrenador_id||'', pago_entrenador:a?.pago_entrenador_usd||0 }); setPlanSel(a?.plan_id||''); },[contratos]);
   const guardarVenta = async () => {
     const a = contratos.find(c=>c.estado==='activo') || contratos[contratos.length-1];
     if (!a?.id) { setVentaMsg('Este cliente no tiene contrato.'); return; }
     setSavingVenta(true); setVentaMsg('');
-    const { error } = await window._sb.from('contratos').update({ setter_id:venta.setter_id||null, closer_id:venta.closer_id||null, entrenador_id:venta.entrenador_id||null }).eq('id', a.id);
+    const { error } = await window._sb.from('contratos').update({ setter_id:venta.setter_id||null, closer_id:venta.closer_id||null, entrenador_id:venta.entrenador_id||null, pago_entrenador_usd: venta.entrenador_id ? (Number(venta.pago_entrenador)||0) : 0 }).eq('id', a.id);
     setSavingVenta(false); setVentaMsg(error ? ('Error: '+error.message) : 'Guardado ✓'); if(!error) loadContratos();
   };
 
@@ -1987,7 +1987,8 @@ const FichaCliente = ({ cliente, onClienteUpdated, setRoute }) => {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
                   <FS label="Setter (quién lo trajo)" val={venta.setter_id} onCh={v=>setVenta(f=>({...f,setter_id:v}))}><option value="">— Ninguno —</option>{setters.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</FS>
                   <FS label="Closer (quién cerró la venta)" val={venta.closer_id} onCh={v=>setVenta(f=>({...f,closer_id:v}))}><option value="">— Ninguno —</option>{closers.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</FS>
-                  <div style={{gridColumn:'1 / -1'}}><FS label="Entrenador asignado" val={venta.entrenador_id} onCh={v=>setVenta(f=>({...f,entrenador_id:v}))}><option value="">— Ninguno (lo entrenas tú) —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre} ({e.tipo||'online'})</option>)}</FS></div>
+                  <FS label="Entrenador asignado" val={venta.entrenador_id} onCh={v=>setVenta(f=>({...f,entrenador_id:v}))}><option value="">— Ninguno (lo entrenas tú) —</option>{entrenadores.map(e=><option key={e.id} value={e.id}>{e.nombre} ({e.tipo||'online'})</option>)}</FS>
+                  {venta.entrenador_id && <FF label="Pago al entrenador por sesión ($)" val={venta.pago_entrenador} onCh={v=>setVenta(f=>({...f,pago_entrenador:v}))} type="number" placeholder="0"/>}
                 </div>
                 <div style={{marginTop:10,fontSize:12,color:'var(--ink-faint)'}}>Se suma a las comisiones del setter y del closer correspondiente.</div>
                 {ventaMsg && <div style={{marginTop:12,fontSize:13,color:ventaMsg.startsWith('Error')?'var(--neg)':'var(--pos)'}}>{ventaMsg}</div>}
